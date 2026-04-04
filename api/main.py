@@ -7,9 +7,10 @@ from collections import deque
 import math
 
 import os
+import logging
 import sqlite3
 from core.search_agent import run_agent
-from core.retrieval import fetch_item_sql, DB_PATH, ensure_db_ready
+from core.retrieval import fetch_item_sql, DB_PATH, ensure_db_ready, get_company_sectors, set_company_sectors
 from core.build_db import build_db
 
 
@@ -32,6 +33,11 @@ class SearchPayload(BaseModel):
     page: int = 1
     limit: int = 5
     session_feedback: Optional[Dict[str, Any]] = None
+
+
+class CompanySectorPayload(BaseModel):
+    company_name: str
+    sectors: List[str] = Field(default_factory=list)
 
     model_config = {
         "json_schema_extra": {
@@ -56,6 +62,8 @@ class SearchPayload(BaseModel):
 
 
 app = FastAPI(title="Tender Search Agent")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +95,25 @@ def search(payload: SearchPayload):
     result = run_agent(payload.model_dump())
     _log_session(payload.model_dump(), result)
     return result
+
+
+@app.get("/company/sector")
+def company_sector(name: str):
+    ensure_db_ready()
+    conn = sqlite3.connect(DB_PATH)
+    data = get_company_sectors(conn, name)
+    conn.close()
+    return {"company_name": name, "sectors": data}
+
+
+@app.post("/company/sector")
+def set_company_sector(payload: CompanySectorPayload):
+    ensure_db_ready()
+    conn = sqlite3.connect(DB_PATH)
+    set_company_sectors(conn, payload.company_name, payload.sectors)
+    data = get_company_sectors(conn, payload.company_name)
+    conn.close()
+    return {"company_name": payload.company_name, "sectors": data}
 
 
 @app.get("/companies")

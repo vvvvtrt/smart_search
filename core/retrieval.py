@@ -42,6 +42,7 @@ def ensure_db_ready() -> None:
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("SELECT 1 FROM ste_fts LIMIT 1")
+        conn.execute("SELECT 1 FROM company_sectors LIMIT 1")
         conn.close()
     except sqlite3.Error:
         from core.build_db import build_db
@@ -98,6 +99,7 @@ def ensure_lemma_schema(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as exc:
         logger.warning("fts_schema_locked", extra={"error": str(exc)})
         return
+    _ensure_company_sectors(conn)
     _LEMMA_SCHEMA_READY = True
 
 
@@ -161,6 +163,23 @@ def _ensure_fts_schema(conn: sqlite3.Connection) -> None:
             conn.commit()
         except sqlite3.OperationalError as exc:
             raise
+
+
+def _ensure_company_sectors(conn: sqlite3.Connection) -> None:
+    """Ensure company_sectors table exists.
+
+    Args:
+        conn: SQLite connection.
+
+    Returns:
+        None.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS company_sectors ("
+        "company_name TEXT PRIMARY KEY, "
+        "sectors TEXT)"
+    )
+    conn.commit()
 
 
 def search_fts(
@@ -518,6 +537,77 @@ def fetch_item_sql(conn: sqlite3.Connection, item_id: str) -> Optional[Dict]:
         "category": category or "",
         "attributes": parse_ste_attributes(attributes or ""),
     }
+
+
+def get_company_sectors(conn: sqlite3.Connection, company_name: str) -> List[str]:
+    """Get stored sectors for a company.
+
+    Args:
+        conn: SQLite connection.
+        company_name: Company name.
+
+    Returns:
+        List of sector labels.
+    """
+    if not company_name:
+        return []
+    row = conn.execute(
+        "SELECT sectors FROM company_sectors WHERE company_name = ? LIMIT 1",
+        (company_name,),
+    ).fetchone()
+    if not row or not row[0]:
+        return []
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return []
+
+
+def set_company_sectors(conn: sqlite3.Connection, company_name: str, sectors: List[str]) -> None:
+    """Store sectors for a company.
+
+    Args:
+        conn: SQLite connection.
+        company_name: Company name.
+        sectors: Sector list.
+
+    Returns:
+        None.
+    """
+    if not company_name:
+        return
+    payload = json.dumps(sectors, ensure_ascii=False)
+    conn.execute(
+        "INSERT INTO company_sectors(company_name, sectors) "
+        "VALUES(?, ?) ON CONFLICT(company_name) DO UPDATE SET sectors=excluded.sectors",
+        (company_name, payload),
+    )
+    conn.commit()
+
+
+def company_category_stats(conn: sqlite3.Connection, company_name: str, kind: str = "customer", limit: int = 50) -> List[str]:
+    """Return top category names for a company from contracts.
+
+    Args:
+        conn: SQLite connection.
+        company_name: Company name.
+        kind: customer|supplier.
+        limit: Max categories.
+
+    Returns:
+        List of category names.
+    """
+    if not company_name:
+        return []
+    col = "customer_name" if kind == "customer" else "supplier_name"
+    rows = conn.execute(
+        f"SELECT s.category, COUNT(1) as cnt "
+        f"FROM contracts c JOIN ste s ON s.id = c.ste_id "
+        f"WHERE c.{col} = ? AND s.category != '' "
+        f"GROUP BY s.category ORDER BY cnt DESC LIMIT ?",
+        (company_name, limit),
+    ).fetchall()
+    return [r[0] for r in rows if r and r[0]]
 
 
 def _chunked(values: Iterable[str], size: int = 900) -> Iterable[List[str]]:

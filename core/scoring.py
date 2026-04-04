@@ -17,6 +17,7 @@ class BehaviorWeights:
     dislike: float = -0.5
     purchase_history: float = 0.35
     cf_boost: float = 0.4
+    sector_pref: float = 0.5
 
 
 @dataclass
@@ -65,6 +66,7 @@ def behavior_score(
     cf_scores: Dict[str, float],
     weights: BehaviorWeights,
     query_cluster: List[str],
+    preferred_clusters: List[List[str]],
 ) -> float:
     """Compute raw behavior score for a single item.
 
@@ -79,6 +81,8 @@ def behavior_score(
         boost_categories: Categories from liked items.
         cf_scores: CF similarity scores.
         weights: Behavior weights.
+        query_cluster: Cluster tokens for query.
+        preferred_clusters: Preferred sector clusters.
 
     Returns:
         Raw behavior score.
@@ -109,6 +113,11 @@ def behavior_score(
             raw += weights.token_overlap * cluster_weight
     if item_id in cf_scores:
         raw += weights.cf_boost * cf_scores[item_id] * cluster_weight
+    if preferred_clusters and item_cluster:
+        for pc in preferred_clusters:
+            if pc and len(set(pc) & set(item_cluster)) >= 1:
+                raw += weights.sector_pref
+                break
     return raw
 
 
@@ -213,6 +222,7 @@ def personal_reasons(
     boost_categories: Set[str],
     cf_scores: Dict[str, float],
     query_cluster: List[str],
+    preferred_clusters: List[List[str]],
 ) -> List[str]:
     """Return list of human-readable reasons for personalization.
 
@@ -225,6 +235,8 @@ def personal_reasons(
         boost_tokens: Tokens from liked items.
         boost_categories: Categories from liked items.
         cf_scores: CF similarity scores.
+        query_cluster: Cluster tokens for query.
+        preferred_clusters: Preferred sector clusters.
 
     Returns:
         List of reasons.
@@ -252,4 +264,9 @@ def personal_reasons(
             reasons.append("похоже на понравившееся")
     if cluster_ok and item_id in cf_scores:
         reasons.append("похожие закупки компаний")
+    if preferred_clusters and item_cluster:
+        for pc in preferred_clusters:
+            if pc and len(set(pc) & set(item_cluster)) >= 1:
+                reasons.append("сфера деятельности компании")
+                break
     return reasons

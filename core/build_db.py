@@ -21,8 +21,11 @@ def stream_csv(path):
 
 def build_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+    try:
+        if os.path.exists(DB_PATH):
+            os.remove(DB_PATH)
+    except FileNotFoundError:
+        pass
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
@@ -43,6 +46,9 @@ def build_db():
     )
     conn.execute(
         "CREATE TABLE contracts (item_name TEXT, contract_id TEXT, ste_id TEXT, created_at TEXT, price TEXT, customer_inn TEXT, customer_name TEXT, customer_region TEXT, supplier_inn TEXT, supplier_name TEXT, supplier_region TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS company_sectors (company_name TEXT PRIMARY KEY, sectors TEXT)"
     )
 
     ste_rows = []

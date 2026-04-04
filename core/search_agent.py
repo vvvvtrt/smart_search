@@ -5,6 +5,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
+import logging
 
 from core.embedding import encode_query
 from core.normalization import normalize_query, build_query_variants, category_cluster
@@ -22,12 +23,16 @@ from core.retrieval import (
     search_like,
     search_faiss,
     fetch_item_sql,
+    get_company_sectors,
+    set_company_sectors,
+    company_category_stats,
 )
 from core.scoring import SearchConfig, behavior_score, personal_reasons, score_candidates
 from core.suggestions import (
     autocomplete,
     build_personal_names,
     build_vocab,
+    classify_company_sectors,
     detect_intent,
     expand_queries,
     explanations,
@@ -37,6 +42,8 @@ from core.suggestions import (
     suggest_correction,
 )
 from core.utils import read_json, write_json, file_mtime, load_cache, save_cache
+
+logger = logging.getLogger("search.agent")
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CACHE_PATH = os.environ.get(
@@ -73,8 +80,13 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     page = int(payload.get("page", 1))
     offset = max(0, (page - 1) * limit)
     session_feedback = payload.get("session_feedback", {}) or {}
+    rec_mode = not normalize_query(user_query)
 
     config = SearchConfig(debug=os.environ.get("SEARCH_DEBUG", "0") == "1")
+    if rec_mode:
+        config.scoring.alpha = 0.10
+        config.scoring.beta = 0.20
+        config.scoring.gamma = 0.70
 
     ensure_db_ready()
     t_db_ready = time.perf_counter()
@@ -91,6 +103,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     cache = load_cache(CACHE_PATH)
     db_mtime = file_mtime(DB_PATH)
     if not cache or cache.get("db_mtime") != db_mtime:
+        logger.info("company_classify_start")
         stats = compute_contract_stats_sql(conn, top_n=5000)
         customer_profiles = build_company_profiles_sql(
             conn,
@@ -104,6 +117,26 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             kind="supplier",
             limit_ids=200,
         )
+        # auto-classify sectors for known companies (one-time)
+        processed = 0
+        saved = 0
+        for cname in stats.get("top_customers", [])[:500]:
+            processed += 1
+            if not get_company_sectors(conn, cname):
+                samples = company_category_stats(conn, cname, "customer")
+                sectors = classify_company_sectors(cname, samples)
+                if sectors:
+                    set_company_sectors(conn, cname, sectors)
+                    saved += 1
+        for cname in stats.get("top_suppliers", [])[:500]:
+            processed += 1
+            if not get_company_sectors(conn, cname):
+                samples = company_category_stats(conn, cname, "supplier")
+                sectors = classify_company_sectors(cname, samples)
+                if sectors:
+                    set_company_sectors(conn, cname, sectors)
+                    saved += 1
+        logger.info("company_classify_done", extra={"processed": processed, "saved": saved})
         cache = {
             "db_mtime": db_mtime,
             "stats": stats,
@@ -178,6 +211,17 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(a, str):
             semantic_terms.append(a)
 
+    if company_name:
+        stored = get_company_sectors(conn, company_name)
+        if stored:
+            favorite_categories = stored
+            logger.info("company_sector_loaded", extra={"company": company_name, "sectors": stored})
+        elif not favorite_categories:
+            samples = company_category_stats(conn, company_name, company_type)
+            favorite_categories = classify_company_sectors(company_name, samples)
+            if favorite_categories:
+                set_company_sectors(conn, company_name, favorite_categories)
+                logger.info("company_sector_auto", extra={"company": company_name, "sectors": favorite_categories})
     known_categories = list(dict.fromkeys(favorite_categories + top_categories))
 
     intent = detect_intent(user_query, known_categories)
@@ -190,6 +234,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     category_filter = infer_filters(user_query, known_categories)
     category = category_filter.get("category")
     query_cluster = category_cluster(category or user_query)
+    preferred_clusters = [category_cluster(c) for c in favorite_categories if c]
 
     expanded = expand_queries(user_query, intent, popular_names, personal_names, category)
     preferred_categories = [category] if category else ([] if user_query else favorite_categories)
@@ -203,30 +248,34 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # Retrieval: FTS + FAISS
-    candidates_fts = search_fts_multi(conn, user_query, limit=200)
-    if not candidates_fts:
-        variants = build_query_variants(user_query)
-        if not variants:
-            variants = [user_query]
-        candidates_fts = search_like(conn, variants, limit=200)
-    bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
-
+    candidates_fts: List[Dict[str, Any]] = []
+    bm25_scores: Dict[str, float] = {}
     vector_scores: Dict[str, float] = {}
-    vector_items: Dict[str, Dict[str, Any]] = {}
-    q_vec = encode_query(user_query)
-    if q_vec is not None:
-        for ste_id, score in search_faiss(q_vec, top_k=50):
-            vector_scores[ste_id] = score
-        if vector_scores:
-            vector_items = build_ste_index_sql(conn, vector_scores.keys())
-
     candidates_map: Dict[str, Dict[str, Any]] = {}
-    for it in candidates_fts:
-        it.pop("bm25", None)
-        candidates_map[it["id"]] = it
-    for ste_id, item in vector_items.items():
-        if ste_id not in candidates_map:
-            candidates_map[ste_id] = item
+
+    if not rec_mode:
+        candidates_fts = search_fts_multi(conn, user_query, limit=200)
+        if not candidates_fts:
+            variants = build_query_variants(user_query)
+            if not variants:
+                variants = [user_query]
+            candidates_fts = search_like(conn, variants, limit=200)
+        bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
+
+        vector_items: Dict[str, Dict[str, Any]] = {}
+        q_vec = encode_query(user_query)
+        if q_vec is not None:
+            for ste_id, score in search_faiss(q_vec, top_k=50):
+                vector_scores[ste_id] = score
+            if vector_scores:
+                vector_items = build_ste_index_sql(conn, vector_scores.keys())
+
+        for it in candidates_fts:
+            it.pop("bm25", None)
+            candidates_map[it["id"]] = it
+        for ste_id, item in vector_items.items():
+            if ste_id not in candidates_map:
+                candidates_map[ste_id] = item
 
     # CF candidates
     company_history_ids = set([str(x) for x in company_personal_ids]) | set(
@@ -238,6 +287,11 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             fetched = fetch_item_sql(conn, ste_id)
             if fetched:
                 candidates_map[ste_id] = fetched
+    if rec_mode and not candidates_map:
+        # seed recommendations from company history + popular items
+        seed_ids = list(company_history_ids) + list(stats.get("top_ste_ids", [])[:200])
+        for ste_id, item in build_ste_index_sql(conn, seed_ids).items():
+            candidates_map.setdefault(ste_id, item)
 
     candidates = list(candidates_map.values())
 
@@ -271,6 +325,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             cf_scores,
             config.behavior,
             query_cluster,
+            preferred_clusters,
         )
 
     scored = score_candidates(candidates, bm25_scores, vector_scores, behavior_scores, config)
@@ -286,12 +341,27 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             boost_categories,
             cf_scores,
             query_cluster,
+            preferred_clusters,
         )
-        if reasons:
+        # If only company-sector reason and query is present, do not mark as personal
+        if normalize_query(user_query) and reasons and set(reasons) == {"сфера деятельности компании"}:
+            it["label"] = "search"
+        elif reasons:
             it["label"] = "personal"
             it["personal_reason"] = reasons[:3]
         else:
             it["label"] = "personal" if it["id"] in personal_id_set else "search"
+
+    # If too many items look personal for a category/exact query, soften personalization
+    if intent in ("category", "exact"):
+        personal_ratio = sum(1 for it in scored if it.get("label") == "personal") / max(1, len(scored))
+        if personal_ratio >= 0.7:
+            for it in scored:
+                if it.get("personal_reason"):
+                    strong = any(r in it["personal_reason"] for r in ["лайк", "долгое чтение", "история/профиль компании"])
+                    if not strong:
+                        it["label"] = "search"
+                        it.pop("personal_reason", None)
 
     scroll_pattern = "default"
     if liked_ids or visited_ids or long_dwell_ids or cf_scores:
@@ -319,6 +389,15 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         page_items = scroll_list[offset:offset + limit]
     else:
         page_items = scored[offset:offset + limit]
+
+    # If query present, prefer items that match company sector clusters
+    if normalize_query(user_query) and preferred_clusters:
+        def _sector_match(it):
+            ic = category_cluster(it.get("category", ""))
+            return any(pc and ic and len(set(pc) & set(ic)) >= 1 for pc in preferred_clusters)
+        sector_first = [it for it in page_items if _sector_match(it)]
+        sector_rest = [it for it in page_items if it not in sector_first]
+        page_items = sector_first + sector_rest
 
     popular_items: List[Dict[str, Any]] = []
     popular_limit = min(5, limit)
@@ -351,6 +430,18 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         "cache_hit": cache is not None and cache.get("db_mtime") == db_mtime,
     }
 
+    # recommendation categories (from behavior + history)
+    rec_categories: List[str] = []
+    if boost_categories:
+        rec_categories.extend(list(boost_categories))
+    for ste_id in list(company_history_ids)[:200]:
+        item = ste_index.get(ste_id)
+        if item and item.get("category"):
+            rec_categories.append(item["category"])
+    rec_categories = list(dict.fromkeys(rec_categories))[:8]
+
+    recommendations = scored[: min(8, len(scored))]
+
     result = {
         "corrected_query": corrected_query,
         "suggestions": sugg,
@@ -362,11 +453,14 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         "scroll_pattern": scroll_pattern,
         "metrics": metrics,
         "items": page_items,
+        "recommendations": recommendations,
+        "recommendation_categories": rec_categories,
         "personal_items": [i for i in page_items if i.get("label") == "personal"],
         "search_items": [i for i in page_items if i.get("label") == "search"],
         "popular_items": popular_items,
         "customer_companies": stats.get("top_customers", []),
         "supplier_companies": stats.get("top_suppliers", []),
+        "company_sectors": favorite_categories,
         "page": page,
         "limit": limit,
     }

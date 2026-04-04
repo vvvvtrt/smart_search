@@ -46,6 +46,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .search-submit:hover{opacity:.88}
 .company-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px}
 .company-label{font-size:13px;color:#666}
+.company-sector{font-size:12px;color:#777}
 .company-toggle{display:flex;border:1px solid #D5D8E8;border-radius:18px;overflow:hidden}
 .company-toggle button{border:none;background:#fff;padding:6px 12px;font-size:12px;font-weight:700;color:#2B4ECC;cursor:pointer}
 .company-toggle button.active{background:#2B4ECC;color:#fff}
@@ -106,6 +107,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 
 /* SEARCH RESULTS */
 .search-section{background:#F2F3F7;padding:8px 40px 10px}
+.rec-section{background:#F2F3F7;padding:10px 40px 16px}
+.rec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.rec-cats{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 6px}
+.rec-cat{font-size:12px;border:1px solid #D5D8E8;border-radius:14px;padding:4px 10px;cursor:pointer;background:#fff}
+.rec-cat:hover{border-color:#2B4ECC;color:#2B4ECC}
+.rec-cat.active{background:#2B4ECC;color:#fff;border-color:#2B4ECC}
 .search-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .scard{background:#fff;border-radius:16px;overflow:hidden;border:1px solid #EAEAF0;transition:box-shadow .2s}
 .scard:hover{box-shadow:0 8px 22px rgba(43,78,204,.1)}
@@ -190,6 +197,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
         <button id="companySupplier">Поставщик</button>
       </div>
       <select id="companySelect" class="company-select"></select>
+      <div class="company-sector" id="companySector">Сфера: —</div>
     </div>
     <div class="search-status" id="searchStatus"></div>
     <div class="variant-row" id="variantRow" style="display:none">
@@ -208,32 +216,24 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
       <button class="load-more-btn" id="loadMoreBtn">Загрузить ещё 8</button>
     </div>
   </div>
+
 </div>
 
-<!-- SECTOR -->
-<div class="sector-wrap">
-  <div class="sector-title">Товары для любой сферы бизнеса</div>
-  <div class="sector-animated">
-    <a id="sectorLabel">здравоохранение</a>
+<!-- RECOMMENDATIONS (replaces sector block) -->
+  <div class="rec-section" id="recSection" style="display:none">
+    <div class="sec-row">
+      <div class="sec-title">Рекомендуем для вашей компании</div>
+      <div class="sec-all" id="recInfo">На основе контрактов и действий</div>
+    </div>
+    <div class="rec-cats" id="recCats"></div>
+    <div class="rec-grid" id="recGrid"></div>
   </div>
-  <div class="sector-pills">
-    <button class="spill active" data-s="health">🏥 Здравоохранение</button>
-    <button class="spill" data-s="edu">🎓 Образование</button>
-    <button class="spill" data-s="it">💻 ИТ</button>
-    <button class="spill" data-s="build">🏗️ Строительство</button>
-    <button class="spill" data-s="food">🍽️ Питание</button>
-    <button class="spill" data-s="gov">🏛️ Госструктуры</button>
-  </div>
-</div>
-
-<!-- PERSONALIZED GRID -->
-<div class="pers-grid" id="persGrid"></div>
 
 <!-- POPULAR -->
 <div class="pop-section">
   <div class="sec-row">
-    <div class="sec-title">Популярные товары</div>
-    <div class="sec-all">Смотреть все <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></div>
+    <div class="sec-title">Рекомендуем для вашей компании</div>
+    <div class="sec-all">На основе контрактов и действий</div>
   </div>
   <div class="pop-grid" id="popGrid"></div>
 </div>
@@ -241,44 +241,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 </div>
 
 <script>
-const sectors={
-  health:{label:'здравоохранение',items:[
-    {icon:'😷',price:'250',name:'Маски медицинские',sub:'500 шт., трёхслойные'},
-    {icon:'💉',price:'180',name:'Шприцы одноразовые',sub:'5 мл, 100 шт./уп.'},
-    {icon:'🧤',price:'480',name:'Перчатки нитриловые',sub:'100 шт., размер M'},
-    {icon:'💊',price:'320',name:'Антисептик Кожный',sub:'1 литр, флакон-помпа'},
-  ]},
-  edu:{label:'образование',items:[
-    {icon:'📚',price:'1150',name:'Комплект учебников 5 кл.',sub:'по программе ФГОС'},
-    {icon:'🖥️',price:'89500',name:'Интерактивная доска 86"',sub:'TouchElite Pro'},
-    {icon:'✏️',price:'2100',name:'Набор канцелярии',sub:'для класса 30 человек'},
-    {icon:'🪑',price:'3400',name:'Парта ученическая',sub:'регулируемая, берёза'},
-  ]},
-  it:{label:'информационные технологии',items:[
-    {icon:'🖥️',price:'42000',name:'ПК Lenovo ThinkCentre',sub:'i5-12500T, 16 ГБ, SSD'},
-    {icon:'🔌',price:'8700',name:'Коммутатор TP-Link 24-п.',sub:'TL-SG1024, 1 Гбит/с'},
-    {icon:'💾',price:'5200',name:'SSD Samsung 870 EVO 1TB',sub:'2.5", SATA III'},
-    {icon:'📡',price:'3400',name:'Wi-Fi роутер TP-Link',sub:'AX3000, двухдиапазон.'},
-  ]},
-  build:{label:'строительство и ремонт',items:[
-    {icon:'🧱',price:'380',name:'Цемент М500',sub:'мешок 50 кг, ГОСТ'},
-    {icon:'🔧',price:'9800',name:'Шуруповёрт Makita DDF484',sub:'18В, 2 акк. в комплекте'},
-    {icon:'💡',price:'4600',name:'Кабель ВВГ-нг 3×2.5',sub:'100 м, бухта'},
-    {icon:'🪟',price:'12400',name:'Дверной блок стальной',sub:'860×2050, правый'},
-  ]},
-  food:{label:'общественное питание',items:[
-    {icon:'🍳',price:'67000',name:'Плита промышленная 4-кон.',sub:'нержавеющая сталь'},
-    {icon:'🧴',price:'720',name:'Средство GRASS для посуды',sub:'5 л, концентрат'},
-    {icon:'🥡',price:'180',name:'Контейнер PP 500 мл',sub:'50 шт./упаковка'},
-    {icon:'🧊',price:'58000',name:'Шкаф холодильный Polair',sub:'CM114-S, 1400 л'},
-  ]},
-  gov:{label:'государственные структуры',items:[
-    {icon:'🗂️',price:'290',name:'Папки архивные А4',sub:'с завязками, 10 шт./уп.'},
-    {icon:'🖨️',price:'28500',name:'МФУ Canon imageRUNNER',sub:'2206N, лазерный'},
-    {icon:'📦',price:'1290',name:'Бумага А4 80 г/м²',sub:'500 л, 5 пачек/коробка'},
-    {icon:'💺',price:'9600',name:'Кресло CHAIRMAN 685',sub:'чёрная экокожа'},
-  ]},
-};
 
 const popular=[
   {icon:'😷',name:'Маски медицинские',sub:'трёхслойные, 50 шт.',price:'250',stock:true},
@@ -342,35 +304,7 @@ function makePop(item){
   </div>`;
 }
 
-function renderSector(key){
-  const s=sectors[key];
-  document.getElementById('sectorLabel').textContent=s.label;
-  document.getElementById('persGrid').innerHTML=s.items.map(makeBig).join('');
-}
-
-document.querySelectorAll('.spill').forEach(b=>{
-  b.addEventListener('click',()=>{
-    document.querySelectorAll('.spill').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active');
-    renderSector(b.dataset.s);
-  });
-});
-
-document.getElementById('popGrid').innerHTML=popular.map(makePop).join('');
-renderSector('health');
-
-// Animated sector label
-const sectorKeys=Object.keys(sectors);
-let si2=0;
-setInterval(()=>{
-  const activeBtn=document.querySelector('.spill.active');
-  if(activeBtn)return;
-  si2=(si2+1)%sectorKeys.length;
-  const lbl=document.getElementById('sectorLabel');
-  lbl.style.opacity='0';
-  setTimeout(()=>{lbl.textContent=sectors[sectorKeys[si2]].label;lbl.style.opacity='1';},220);
-},2200);
-document.getElementById('sectorLabel').style.transition='opacity .2s';
+document.getElementById('popGrid').innerHTML='';
 
 // Search placeholder anim
 const phs=['Маски медицинские, от 100 шт.','Флешка USB 3.0, оптом','Чистящее средство для офиса','Дезинфекция помещений','Кетамин, сертификат качества'];
@@ -397,12 +331,18 @@ const searchInfo=document.getElementById('searchInfo');
 const variantRow=document.getElementById('variantRow');
 const variantButtons=document.getElementById('variantButtons');
 const loadMoreBtn=document.getElementById('loadMoreBtn');
+const recSection=document.getElementById('recSection');
+const recGrid=document.getElementById('recGrid');
+const recCats=document.getElementById('recCats');
+const recInfo=document.getElementById('recInfo');
+const companySector=document.getElementById('companySector');
 let likedIds=new Set();
 let longDwellIds=new Set();
 let visitedIds=new Set();
 let companyKind='customer';
 let searchPage=1;
 let lastQuery='';
+
 
 function companyKey(){
   const name=companySelect.value||'default';
@@ -486,6 +426,24 @@ function makeSearchCard(it){
   `;
 }
 
+function makeRecCard(it){
+  const icon=emojiForItem(it.name||'', it.category||'');
+  return `
+    <div class="pcard">
+      <div class="pcard-top">
+        ${icon}
+      </div>
+      <div class="pcard-body">
+        <div class="pcard-name">${it.name || it.id}</div>
+        <div class="pcard-sub">${it.category || ''}</div>
+        <div class="pcard-price">—</div>
+        <button class="pcard-btn">${cartIcon()} В корзину</button>
+      </div>
+    </div>
+  `;
+}
+
+
 function bindLikeButtons(){
   searchGrid.querySelectorAll('[data-like]').forEach(btn=>{
     btn.addEventListener('click',()=>{
@@ -557,6 +515,49 @@ async function runSearch(){
   }
 }
 
+async function loadRecommendations(){
+  const payload={
+    user_query:'',
+    user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
+    company:{type:companyKind,name:companySelect.value||''},
+    page:1,
+    limit:8,
+    session_feedback:{
+      liked_ids:Array.from(likedIds),
+      disliked_ids:[],
+      long_dwell_ids:Array.from(longDwellIds),
+      visited_ids:Array.from(visitedIds)
+    }
+  };
+  try{
+    const res=await fetch('/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const items=data.recommendations||[];
+    if(items.length){
+      recGrid.innerHTML=items.map(makeRecCard).join('');
+      recSection.style.display='block';
+      const cats=data.company_sectors||[];
+      if(cats.length){
+        recInfo.textContent=`Сфера компании: ${cats.slice(0,2).join(', ')}`;
+        companySector.textContent=`Сфера: ${cats.slice(0,2).join(', ')}`;
+      }else{
+        recInfo.textContent='На основе контрактов и действий';
+        companySector.textContent='Сфера: —';
+      }
+      const recCatsList=data.recommendation_categories||[];
+      recCats.innerHTML=recCatsList.map(c=>`<span class="rec-cat">${c}</span>`).join('');
+      const popGrid=document.getElementById('popGrid');
+      if(popGrid){popGrid.innerHTML=items.map(makePop).join('');}
+    }else{
+      recSection.style.display='none';
+    }
+  }catch(e){
+    recSection.style.display='none';
+    companySector.textContent='Сфера: —';
+  }
+}
+
+
 async function loadMore(){
   if(!lastQuery){return;}
   searchStatus.textContent='Загружаем...';
@@ -598,9 +599,11 @@ document.getElementById('companySupplier').addEventListener('click',()=>setCompa
 companySelect.addEventListener('change',()=>{
   loadCompanyState();
   if(lastQuery){runSearch();}
+  loadRecommendations();
 });
 loadMoreBtn.addEventListener('click',loadMore);
 loadCompanies();
+loadRecommendations();
 </script>
 </body>
 </html>

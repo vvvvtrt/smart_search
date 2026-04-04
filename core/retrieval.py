@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple, Iterable, Optional
 import numpy as np
 
 from core.normalization import normalize_fts_query, lemmatize_text, build_query_variants
+from core.normalization import normalize_query
 
 logger = logging.getLogger("search.retrieval")
 
@@ -200,6 +201,69 @@ def search_fts(
                 "bm25": float(-bm25),  # higher is better
             }
         )
+    return results
+
+
+def search_like(conn: sqlite3.Connection, queries: List[str], limit: int = 200) -> List[Dict]:
+    """Fallback LIKE search over name/category.
+
+    Args:
+        conn: SQLite connection.
+        queries: Search queries.
+        limit: Max results.
+
+    Returns:
+        List of items.
+    """
+    def _run(tokens: List[str], use_or: bool) -> List[Dict]:
+        if not tokens:
+            return []
+        op = " OR " if use_or else " AND "
+        where = op.join(["(name LIKE ? OR category LIKE ?)"] * len(tokens))
+        params: List[str | int] = []
+        for t in tokens:
+            like = f"%{t}%"
+            params.extend([like, like])
+        params.append(limit)
+        rows = conn.execute(
+            f"SELECT id, name, category, attributes FROM ste WHERE {where} LIMIT ?",
+            params,
+        ).fetchall()
+        res = []
+        for ste_id, name, category, attributes in rows:
+            res.append(
+                {
+                    "id": str(ste_id),
+                    "name": name or "",
+                    "category": category or "",
+                    "attributes": parse_ste_attributes(attributes or ""),
+                    "bm25": 0.0,
+                }
+            )
+        return res
+
+    seen = set()
+    results = []
+    for q in queries:
+        qn = normalize_query(q)
+        tokens = [t for t in qn.split() if t]
+        if not tokens:
+            continue
+        for item in _run(tokens, use_or=False):
+            if item["id"] in seen:
+                continue
+            seen.add(item["id"])
+            results.append(item)
+            if len(results) >= limit:
+                return results
+        if len(results) < max(5, limit // 10):
+            for item in _run(tokens, use_or=True):
+                if item["id"] in seen:
+                    continue
+                seen.add(item["id"])
+                results.append(item)
+                if len(results) >= limit:
+                    return results
     return results
 
 

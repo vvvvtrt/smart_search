@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from core.embedding import encode_query
-from core.normalization import normalize_query
+from core.normalization import normalize_query, build_query_variants
 from core.personalization import build_behavior_context, cf_candidates
 from core.retrieval import (
     DB_PATH,
@@ -19,6 +19,7 @@ from core.retrieval import (
     build_ste_index_sql,
     top_categories_sql,
     search_fts_multi,
+    search_like,
     search_faiss,
     fetch_item_sql,
 )
@@ -202,6 +203,11 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # Retrieval: FTS + FAISS
     candidates_fts = search_fts_multi(conn, user_query, limit=200)
+    if not candidates_fts:
+        variants = build_query_variants(user_query)
+        if not variants:
+            variants = [user_query]
+        candidates_fts = search_like(conn, variants, limit=200)
     bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
 
     vector_scores: Dict[str, float] = {}

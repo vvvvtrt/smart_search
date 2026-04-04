@@ -49,8 +49,8 @@ def build_behavior_context(
     liked_ids: Set[str],
     visited_ids: Set[str],
     long_dwell_ids: Set[str],
-) -> Tuple[Set[str], Set[str]]:
-    """Collect tokens and categories from liked/visited items.
+) -> Tuple[Set[str], Set[str], Set[str]]:
+    """Collect tokens, categories, and brand tokens from liked/visited items.
 
     Args:
         conn: SQLite connection.
@@ -60,13 +60,14 @@ def build_behavior_context(
         long_dwell_ids: Long dwell item ids.
 
     Returns:
-        Tuple of (tokens, categories).
+        Tuple of (tokens, categories, brand_tokens).
     """
     boost_tokens: Set[str] = set()
     boost_categories: Set[str] = set()
+    boost_brands: Set[str] = set()
     boost_ids = liked_ids | visited_ids | long_dwell_ids
     if not boost_ids:
-        return boost_tokens, boost_categories
+        return boost_tokens, boost_categories, boost_brands
     candidate_map = {it["id"]: it for it in candidates}
     for bid in boost_ids:
         it = candidate_map.get(bid)
@@ -76,8 +77,12 @@ def build_behavior_context(
             cat = it.get("category", "")
             if cat:
                 boost_categories.add(cat)
-            boost_tokens |= set(norm_tokens(it.get("name", "")))
-    return boost_tokens, boost_categories
+            toks = set(norm_tokens(it.get("name", "")))
+            boost_tokens |= toks
+            for t in toks:
+                if t in {"asus","acer","lenovo","hp","huawei","samsung","xiaomi","apple","iphone","macbook","dell","msi","sony","lg"}:
+                    boost_brands.add(t)
+    return boost_tokens, boost_categories, boost_brands
 
 
 def cf_candidates(purchased_ids: Iterable[str], top_k_per_item: int = 30) -> Dict[str, float]:

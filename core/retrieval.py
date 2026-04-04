@@ -2,12 +2,13 @@ import json
 import logging
 import os
 import sqlite3
+import time
 from typing import Dict, List, Tuple, Iterable, Optional
 
 import numpy as np
 
 from core.normalization import normalize_fts_query, lemmatize_text, build_query_variants
-from core.normalization import normalize_query
+from core.normalization import normalize_query, tokens as norm_tokens
 
 logger = logging.getLogger("search.retrieval")
 
@@ -24,6 +25,12 @@ FAISS_IDS_PATH = os.environ.get(
 
 _FAISS = {"index": None, "ids": None}
 _LEMMA_SCHEMA_READY = False
+
+STOPWORDS = {
+    "и","в","на","с","для","по","из","от","до","за","под","над",
+    "или","но","а","же","бы","не","ни","то","это","как","так",
+    "что","все","при","об","к","о"
+}
 
 
 def ensure_db_ready() -> None:
@@ -628,3 +635,61 @@ def _chunked(values: Iterable[str], size: int = 900) -> Iterable[List[str]]:
             buf = []
     if buf:
         yield buf
+
+
+def expand_query_from_session(query: str, session_feedback: Dict, db_conn: sqlite3.Connection) -> str:
+    """Expand query using session item tokens."""
+    t0 = time.perf_counter()
+    if not session_feedback:
+        return query
+    q_tokens = norm_tokens(lemmatize_text(query))
+    short_query = len(q_tokens) <= 1
+    visited = set(session_feedback.get("visited_ids", []) or [])
+    liked = set(session_feedback.get("liked_ids", []) or [])
+    dwell = set(session_feedback.get("long_dwell_ids", []) or [])
+    session_ids = [str(x) for x in (visited | liked | dwell) if str(x)]
+    if not session_ids:
+        return query
+    names: List[str] = []
+    for batch in _chunked(session_ids, size=900):
+        placeholders = ",".join(["?"] * len(batch))
+        rows = db_conn.execute(
+            f"SELECT name FROM ste WHERE id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        for (name,) in rows:
+            if name:
+                names.append(name)
+    if not names:
+        return query
+    token_counts: Dict[str, int] = {}
+    for name in names:
+        lemmas = lemmatize_text(name)
+        for tok in norm_tokens(lemmas):
+            if tok in STOPWORDS:
+                continue
+            if not tok.isalpha():
+                continue
+            if any(ch.isdigit() for ch in tok):
+                continue
+            token_counts[tok] = token_counts.get(tok, 0) + 1
+    if not token_counts:
+        return query
+    query_lemmas = set(q_tokens)
+    # If query has no overlap with session and is not short, skip expansion
+    if not short_query and not (set(token_counts.keys()) & query_lemmas):
+        return query
+    top_tokens = [
+        t for t, _ in sorted(token_counts.items(), key=lambda x: (-x[1], x[0]))
+        if t not in query_lemmas
+    ][:3]
+    if not top_tokens:
+        return query
+    expanded = f"{query} {' '.join(top_tokens)}".strip()
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "session_query_expanded",
+            extra={"original": query, "expanded": expanded},
+        )
+    _ = time.perf_counter() - t0
+    return expanded

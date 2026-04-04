@@ -7,9 +7,16 @@ import numpy as np
 logger = logging.getLogger("search.embedding")
 
 _MODEL = None
-DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2"
+DEFAULT_MODEL = "intfloat/multilingual-e5-small"
 MODEL_PATH = os.environ.get("ST_MODEL_PATH", DEFAULT_MODEL)
 OFFLINE = os.environ.get("TRANSFORMERS_OFFLINE", "0") == "1"
+_QUERY_PREFIX = "query: "
+
+
+def _maybe_prefix_query(text: str) -> str:
+    if text.lower().startswith("query:"):
+        return text
+    return f"{_QUERY_PREFIX}{text}"
 
 
 def load_model():
@@ -30,9 +37,12 @@ def load_model():
         logger.warning("sentence_transformers_not_installed")
         return None
     try:
-        _MODEL = SentenceTransformer(MODEL_PATH)
+        if os.path.isdir(MODEL_PATH):
+            _MODEL = SentenceTransformer(MODEL_PATH, device="cpu")
+        else:
+            _MODEL = SentenceTransformer(DEFAULT_MODEL)
     except Exception as exc:
-        logger.warning("embedding_model_load_failed", extra={"error": str(exc), "model": MODEL_PATH, "offline": OFFLINE})
+        logger.warning("embedding_model_load_failed: %s (model=%s offline=%s)", exc, MODEL_PATH, OFFLINE)
         return None
     return _MODEL
 
@@ -49,5 +59,5 @@ def encode_query(text: str) -> Optional[np.ndarray]:
     model = load_model()
     if model is None:
         return None
-    vec = model.encode([text], normalize_embeddings=True)
+    vec = model.encode([_maybe_prefix_query(text)], normalize_embeddings=True)
     return vec

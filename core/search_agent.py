@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 import logging
 
-from core.embedding import encode_query
-from core.normalization import normalize_query, build_query_variants, category_cluster
+from core.normalization import normalize_query, build_query_variants, category_cluster, tokens as norm_tokens
+from core.ngram import ngram_scores
 from core.personalization import build_behavior_context, cf_candidates
 from core.retrieval import (
     DB_PATH,
@@ -21,13 +21,13 @@ from core.retrieval import (
     top_categories_sql,
     search_fts_multi,
     search_like,
-    search_faiss,
+    expand_query_from_session,
     fetch_item_sql,
     get_company_sectors,
     set_company_sectors,
     company_category_stats,
 )
-from core.scoring import SearchConfig, behavior_score, personal_reasons, score_candidates
+from core.scoring import SearchConfig, behavior_score, category_rerank, personal_reasons, score_candidates
 from core.suggestions import (
     autocomplete,
     build_personal_names,
@@ -40,6 +40,7 @@ from core.suggestions import (
     ranking_hints,
     similar_categories,
     suggest_correction,
+    rewrite_query_variants,
 )
 from core.utils import read_json, write_json, file_mtime, load_cache, save_cache
 
@@ -235,8 +236,11 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     category = category_filter.get("category")
     query_cluster = category_cluster(category or user_query)
     preferred_clusters = [category_cluster(c) for c in favorite_categories if c]
+    company_sectors = favorite_categories[:]
 
     expanded = expand_queries(user_query, intent, popular_names, personal_names, category)
+    expanded += rewrite_query_variants(user_query, recent_actions, favorite_categories)
+    expanded = list(dict.fromkeys(expanded))[:5]
     preferred_categories = [category] if category else ([] if user_query else favorite_categories)
     sugg = autocomplete(
         user_query,
@@ -247,35 +251,30 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         preferred_categories,
     )
 
-    # Retrieval: FTS + FAISS
+    enriched_query = expand_query_from_session(user_query, session_feedback, conn)
+
+    # Retrieval: FTS + n-gram similarity
     candidates_fts: List[Dict[str, Any]] = []
     bm25_scores: Dict[str, float] = {}
     vector_scores: Dict[str, float] = {}
     candidates_map: Dict[str, Dict[str, Any]] = {}
 
     if not rec_mode:
-        candidates_fts = search_fts_multi(conn, user_query, limit=200)
+        candidates_fts = search_fts_multi(conn, enriched_query, limit=200)
         if not candidates_fts:
-            variants = build_query_variants(user_query)
+            variants = build_query_variants(enriched_query)
+            variants += rewrite_query_variants(enriched_query, recent_actions, favorite_categories)
+            variants = list(dict.fromkeys(variants))[:5]
             if not variants:
-                variants = [user_query]
+                variants = [enriched_query]
             candidates_fts = search_like(conn, variants, limit=200)
         bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
-
-        vector_items: Dict[str, Dict[str, Any]] = {}
-        q_vec = encode_query(user_query)
-        if q_vec is not None:
-            for ste_id, score in search_faiss(q_vec, top_k=50):
-                vector_scores[ste_id] = score
-            if vector_scores:
-                vector_items = build_ste_index_sql(conn, vector_scores.keys())
 
         for it in candidates_fts:
             it.pop("bm25", None)
             candidates_map[it["id"]] = it
-        for ste_id, item in vector_items.items():
-            if ste_id not in candidates_map:
-                candidates_map[ste_id] = item
+        if candidates_map:
+            vector_scores = ngram_scores(enriched_query, candidates_map.values())
 
     # CF candidates
     company_history_ids = set([str(x) for x in company_personal_ids]) | set(
@@ -294,6 +293,10 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             candidates_map.setdefault(ste_id, item)
 
     candidates = list(candidates_map.values())
+    q_tokens = [t for t in normalize_query(user_query).split() if t]
+    short_query = len(q_tokens) <= 2
+    if short_query:
+        candidates = category_rerank(candidates, session_feedback, conn)
 
     # Behavior context
     liked_ids = set(session_feedback.get("liked_ids", []))
@@ -301,13 +304,35 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     long_dwell_ids = set(session_feedback.get("long_dwell_ids", []))
     disliked_ids = set(session_feedback.get("disliked_ids", []))
 
-    boost_tokens, boost_categories = build_behavior_context(
+    recent_action_tokens = set()
+    for a in recent_actions:
+        if isinstance(a, str):
+            recent_action_tokens |= set(norm_tokens(a))
+
+    boost_tokens: Set[str] = set()
+    boost_categories: Set[str] = set()
+    boost_brands: Set[str] = set()
+
+    _bc = build_behavior_context(
         conn,
         candidates,
         liked_ids,
         visited_ids,
         long_dwell_ids,
     )
+    if len(_bc) == 3:
+        boost_tokens, boost_categories, boost_brands = _bc
+
+    focus_categories: Set[str] = set()
+    if boost_categories:
+        focus_categories |= set(boost_categories)
+    if short_query and recent_actions:
+        for a in recent_actions:
+            if isinstance(a, str):
+                na = normalize_query(a)
+                for cat in top_categories:
+                    if na and na in normalize_query(cat):
+                        focus_categories.add(cat)
 
     personal_id_set = set(company_history_ids)
 
@@ -322,13 +347,21 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             personal_id_set,
             boost_tokens,
             boost_categories,
+            boost_brands,
+            recent_action_tokens,
+            focus_categories,
+            short_query,
             cf_scores,
             config.behavior,
             query_cluster,
             preferred_clusters,
+            company_sectors,
         )
+    category_boosts = {it["id"]: float(it.get("category_boost", 1.0)) for it in candidates}
+    for item_id, score in list(behavior_scores.items()):
+        behavior_scores[item_id] = score * category_boosts.get(item_id, 1.0)
 
-    scored = score_candidates(candidates, bm25_scores, vector_scores, behavior_scores, config)
+    scored = score_candidates(candidates, bm25_scores, vector_scores, behavior_scores, config, category_boosts)
 
     for it in scored:
         reasons = personal_reasons(
@@ -339,9 +372,14 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             personal_id_set,
             boost_tokens,
             boost_categories,
+            boost_brands,
+            recent_action_tokens,
+            focus_categories,
+            short_query,
             cf_scores,
             query_cluster,
             preferred_clusters,
+            company_sectors,
         )
         # If only company-sector reason and query is present, do not mark as personal
         if normalize_query(user_query) and reasons and set(reasons) == {"сфера деятельности компании"}:
@@ -390,11 +428,19 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     else:
         page_items = scored[offset:offset + limit]
 
+    if short_query and focus_categories:
+        def _focus_match(it):
+            return it.get("category") in focus_categories
+        focus_first = [it for it in page_items if _focus_match(it)]
+        focus_rest = [it for it in page_items if it not in focus_first]
+        page_items = focus_first + focus_rest
+
     # If query present, prefer items that match company sector clusters
-    if normalize_query(user_query) and preferred_clusters:
+    if normalize_query(user_query) and company_sectors:
         def _sector_match(it):
-            ic = category_cluster(it.get("category", ""))
-            return any(pc and ic and len(set(pc) & set(ic)) >= 1 for pc in preferred_clusters)
+            from core.suggestions import category_to_sectors
+            item_sectors = category_to_sectors(it.get("category", "") + " " + it.get("name", ""))
+            return bool(set(item_sectors) & set(company_sectors))
         sector_first = [it for it in page_items if _sector_match(it)]
         sector_rest = [it for it in page_items if it not in sector_first]
         page_items = sector_first + sector_rest

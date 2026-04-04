@@ -10,6 +10,9 @@ import scipy.sparse as sp
 
 from core.retrieval import ensure_db_ready, ensure_lemma_schema, DB_PATH, FAISS_INDEX_PATH, FAISS_IDS_PATH
 
+E5_MODEL = "intfloat/multilingual-e5-small"
+_PASSAGE_PREFIX = "passage: "
+
 
 def _load_ste_rows(conn: sqlite3.Connection) -> List[Tuple[str, str, str]]:
     """Load STE rows for indexing.
@@ -38,6 +41,13 @@ def build_faiss() -> None:
     ensure_lemma_schema(conn)
     rows = _load_ste_rows(conn)
     conn.close()
+    max_items_raw = os.environ.get("FAISS_MAX_ITEMS")
+    if max_items_raw:
+        try:
+            max_items = max(1, int(max_items_raw))
+            rows = rows[:max_items]
+        except ValueError:
+            pass
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -45,9 +55,13 @@ def build_faiss() -> None:
     except ImportError as exc:
         raise SystemExit(f"Missing dependency: {exc}")
 
-    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2")
-    texts = [f"{name} {category}".strip() for _, name, category in rows]
-    vectors = model.encode(texts, show_progress_bar=True, batch_size=64, normalize_embeddings=True)
+    model_path = os.environ.get("ST_MODEL_PATH", E5_MODEL)
+    if os.path.isdir(model_path):
+        model = SentenceTransformer(model_path, device="cpu")
+    else:
+        model = SentenceTransformer(E5_MODEL)
+    texts = [f"{_PASSAGE_PREFIX}{name} {category}".strip() for _, name, category in rows]
+    vectors = model.encode(texts, show_progress_bar=True, batch_size=512, normalize_embeddings=True)
     vectors = np.asarray(vectors, dtype="float32")
     dim = vectors.shape[1]
     index = faiss.IndexFlatIP(dim)

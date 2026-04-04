@@ -1,10 +1,64 @@
 import logging
 from dataclasses import dataclass, field
+import math
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from core.normalization import normalize_query, tokens as norm_tokens, category_cluster
+from core.suggestions import category_to_sectors
 
 logger = logging.getLogger("search.scoring")
+
+
+def _chunked(values: Iterable[str], size: int = 900) -> Iterable[List[str]]:
+    """Yield chunks from an iterable."""
+    buf: List[str] = []
+    for v in values:
+        buf.append(v)
+        if len(buf) >= size:
+            yield buf
+            buf = []
+    if buf:
+        yield buf
+
+
+def category_rerank(candidates: List[Dict], session_feedback: Dict, db_conn) -> List[Dict]:
+    """Apply category-based boost to candidates."""
+    if not candidates or not session_feedback:
+        return candidates
+    visited = set(session_feedback.get("visited_ids", []) or [])
+    liked = set(session_feedback.get("liked_ids", []) or [])
+    dwell = set(session_feedback.get("long_dwell_ids", []) or [])
+    disliked = set(session_feedback.get("disliked_ids", []) or [])
+    session_ids = [str(x) for x in (visited | liked | dwell) if str(x)]
+    if not session_ids:
+        return candidates
+    cat_counts: Dict[str, int] = {}
+    disliked_cats: Set[str] = set()
+    for batch in _chunked(session_ids):
+        placeholders = ",".join(["?"] * len(batch))
+        rows = db_conn.execute(
+            f"SELECT id, category FROM ste WHERE id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        for ste_id, category in rows:
+            if not category:
+                continue
+            cat_counts[category] = cat_counts.get(category, 0) + 1
+            if str(ste_id) in disliked:
+                disliked_cats.add(category)
+    if not cat_counts and not disliked_cats:
+        return candidates
+    for it in candidates:
+        cat = it.get("category") or ""
+        boost = 1.0
+        if cat in disliked_cats:
+            boost = 0.7
+        elif cat in cat_counts:
+            boost = 1.0 + 0.3 * math.log1p(cat_counts[cat])
+        if boost > 2.0:
+            boost = 2.0
+        it["category_boost"] = boost
+    return candidates
 
 
 @dataclass
@@ -18,13 +72,16 @@ class BehaviorWeights:
     purchase_history: float = 0.35
     cf_boost: float = 0.4
     sector_pref: float = 0.5
+    brand_match: float = 0.45
+    recent_action: float = 0.45
+    focus_category: float = 0.6
 
 
 @dataclass
 class ScoringWeights:
     alpha: float = 0.15
-    beta: float = 0.75
-    gamma: float = 0.10
+    beta: float = 0.70
+    gamma: float = 0.15
 
 
 @dataclass
@@ -63,10 +120,15 @@ def behavior_score(
     personal_id_set: Set[str],
     boost_tokens: Set[str],
     boost_categories: Set[str],
+    boost_brands: Set[str],
+    recent_action_tokens: Set[str],
+    focus_categories: Set[str],
+    short_query: bool,
     cf_scores: Dict[str, float],
     weights: BehaviorWeights,
     query_cluster: List[str],
     preferred_clusters: List[List[str]],
+    company_sectors: List[str],
 ) -> float:
     """Compute raw behavior score for a single item.
 
@@ -79,10 +141,13 @@ def behavior_score(
         personal_id_set: Purchase history ids.
         boost_tokens: Tokens from liked items.
         boost_categories: Categories from liked items.
+        boost_brands: Brand tokens from liked items.
+        recent_action_tokens: Tokens from recent actions.
         cf_scores: CF similarity scores.
         weights: Behavior weights.
         query_cluster: Cluster tokens for query.
         preferred_clusters: Preferred sector clusters.
+        company_sectors: Company sector labels.
 
     Returns:
         Raw behavior score.
@@ -104,20 +169,25 @@ def behavior_score(
         cluster_weight = 1.0
     else:
         overlap = len(set(query_cluster) & set(item_cluster))
-        cluster_weight = 1.0 if overlap >= 1 else 0.35
+        cluster_weight = 1.0 if overlap >= 1 else 0.6
     if boost_categories and item.get("category") in boost_categories:
         raw += weights.category_match * cluster_weight
     if boost_tokens:
         name_tokens = set(norm_tokens(item.get("name", "")))
         if name_tokens & boost_tokens:
             raw += weights.token_overlap * cluster_weight
+        if boost_brands and name_tokens & boost_brands:
+            raw += weights.brand_match * cluster_weight
+        if recent_action_tokens and name_tokens & recent_action_tokens:
+            raw += weights.recent_action * cluster_weight
     if item_id in cf_scores:
         raw += weights.cf_boost * cf_scores[item_id] * cluster_weight
-    if preferred_clusters and item_cluster:
-        for pc in preferred_clusters:
-            if pc and len(set(pc) & set(item_cluster)) >= 1:
-                raw += weights.sector_pref
-                break
+    if short_query and focus_categories and item.get("category") in focus_categories:
+        raw += weights.focus_category * cluster_weight
+    if company_sectors:
+        item_sectors = category_to_sectors(item.get("category", "") + " " + item.get("name", ""))
+        if set(item_sectors) & set(company_sectors):
+            raw += weights.sector_pref
     return raw
 
 
@@ -160,6 +230,7 @@ def score_candidates(
     vector_scores: Dict[str, float],
     behavior_scores: Dict[str, float],
     config: SearchConfig,
+    category_boosts: Optional[Dict[str, float]] = None,
 ) -> List[Dict]:
     """Compute final scores and optionally add breakdown.
 
@@ -191,12 +262,16 @@ def score_candidates(
         it = dict(item)
         it["score"] = float(final)
         if config.debug:
+            if category_boosts is not None:
+                it.setdefault("score_breakdown", {})
             it["score_breakdown"] = {
                 "bm25": round(bm, 4),
                 "vec": round(ve, 4),
                 "beh": round(be, 4),
                 "final": round(final, 4),
             }
+            if category_boosts is not None:
+                it["score_breakdown"]["category_boost"] = round(category_boosts.get(item_id, 1.0), 4)
             logger.debug(
                 "score_breakdown",
                 extra={
@@ -205,6 +280,7 @@ def score_candidates(
                     "vec": ve,
                     "beh": be,
                     "final": final,
+                    "category_boost": category_boosts.get(item_id, 1.0) if category_boosts is not None else 1.0,
                 },
             )
         scored.append(it)
@@ -220,9 +296,14 @@ def personal_reasons(
     personal_id_set: Set[str],
     boost_tokens: Set[str],
     boost_categories: Set[str],
+    boost_brands: Set[str],
+    recent_action_tokens: Set[str],
+    focus_categories: Set[str],
+    short_query: bool,
     cf_scores: Dict[str, float],
     query_cluster: List[str],
     preferred_clusters: List[List[str]],
+    company_sectors: List[str],
 ) -> List[str]:
     """Return list of human-readable reasons for personalization.
 
@@ -234,9 +315,12 @@ def personal_reasons(
         personal_id_set: Purchase history ids.
         boost_tokens: Tokens from liked items.
         boost_categories: Categories from liked items.
+        boost_brands: Brand tokens from liked items.
+        recent_action_tokens: Tokens from recent actions.
         cf_scores: CF similarity scores.
         query_cluster: Cluster tokens for query.
         preferred_clusters: Preferred sector clusters.
+        company_sectors: Company sector labels.
 
     Returns:
         List of reasons.
@@ -262,11 +346,16 @@ def personal_reasons(
         name_tokens = set(norm_tokens(item.get("name", "")))
         if name_tokens & boost_tokens:
             reasons.append("похоже на понравившееся")
+        if boost_brands and name_tokens & boost_brands:
+            reasons.append("похожий бренд")
+        if recent_action_tokens and name_tokens & recent_action_tokens:
+            reasons.append("последние действия")
     if cluster_ok and item_id in cf_scores:
         reasons.append("похожие закупки компаний")
-    if preferred_clusters and item_cluster:
-        for pc in preferred_clusters:
-            if pc and len(set(pc) & set(item_cluster)) >= 1:
-                reasons.append("сфера деятельности компании")
-                break
+    if short_query and focus_categories and item.get("category") in focus_categories:
+        reasons.append("категория фокуса")
+    if company_sectors:
+        item_sectors = category_to_sectors(item.get("category", "") + " " + item.get("name", ""))
+        if set(item_sectors) & set(company_sectors):
+            reasons.append("сфера деятельности компании")
     return reasons

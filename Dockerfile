@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
-ENV ST_MODEL_PATH=/app/data/models/paraphrase-multilingual-MiniLM-L6-v2
+ENV ST_MODEL_PATH=/app/data/models/intfloat-multilingual-e5-small
 
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir --default-timeout=120 --retries 5 -r requirements.txt

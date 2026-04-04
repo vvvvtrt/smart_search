@@ -1,0 +1,14 @@
+services:
+  search-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - cache:/app/cache
+    environment:
+      - CACHE_PATH=/app/cache/cache.json
+      - DB_PATH=/app/data/search.db
+
+volumes:
+  cache:

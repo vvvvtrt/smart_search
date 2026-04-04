@@ -1,0 +1,4 @@
+__pycache__
+.search_agent_cache.json
+.git
+.DS_Store

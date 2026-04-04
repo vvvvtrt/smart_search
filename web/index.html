@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Search Agent</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; max-width: 960px; }
+      h1 { margin-bottom: 6px; }
+      textarea, input { width: 100%; padding: 10px; margin: 6px 0 12px; }
+      button { padding: 10px 16px; cursor: pointer; }
+      pre { background: #f6f8fa; padding: 12px; overflow: auto; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <h1>Поиск по СТЕ</h1>
+    <p>Поиск с персонализацией и рекомендациями.</p>
+
+    <label>Поисковый запрос</label>
+    <input id="userQuery" value="флешка 16 гб" />
+
+    <div class="row">
+      <div>
+        <label>favorite_categories (JSON array)</label>
+        <textarea id="favCats">["Usb-накопители твердотельные (флеш-драйвы)"]</textarea>
+      </div>
+      <div>
+        <label>purchase_history (JSON array)</label>
+        <textarea id="purchases">["1222958"]</textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>company type</label>
+        <select id="companyType">
+          <option value="customer">customer</option>
+          <option value="supplier">supplier</option>
+        </select>
+      </div>
+      <div>
+        <label>company</label>
+        <select id="companySelect"></select>
+      </div>
+    </div>
+
+    <label>recent_actions (JSON array)</label>
+    <textarea id="recentActions">["флеш накопитель smartbuy"]</textarea>
+
+    <div class="row">
+      <div>
+        <label>page</label>
+        <input id="page" value="1" />
+      </div>
+      <div>
+        <label>limit</label>
+        <input id="limit" value="5" />
+      </div>
+    </div>
+
+    <button id="run">Найти</button>
+    <button id="prev">←</button>
+    <button id="next">→</button>
+    <span id="status"></span>
+
+    <h3>Результаты</h3>
+    <div id="results"></div>
+
+    <h3>Популярное</h3>
+    <ul id="popularList"></ul>
+
+    <h3>Подсказки</h3>
+    <div id="suggestions"></div>
+
+    <details>
+      <summary>Raw JSON</summary>
+      <pre id="output">{}</pre>
+    </details>
+
+    <script>
+      const renderList = (el, items, label) => {
+        el.innerHTML = "";
+        if (!items || items.length === 0) {
+          el.innerHTML = "<li>—</li>";
+          return;
+        }
+        for (const it of items) {
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.href = `/item.html?id=${encodeURIComponent(it.id)}`;
+          a.textContent = `${it.name} (${it.category})`;
+          a.target = "_blank";
+          const badge = document.createElement("span");
+          badge.textContent = ` [${label}]`;
+          li.appendChild(a);
+          li.appendChild(badge);
+          el.appendChild(li);
+        }
+      };
+
+      const renderResults = (items) => {
+        const el = document.getElementById("results");
+        el.innerHTML = "";
+        if (!items || items.length === 0) {
+          el.textContent = "Ничего не найдено";
+          return;
+        }
+        for (const it of items) {
+          const block = document.createElement("div");
+          block.style.padding = "10px 0";
+          block.style.borderBottom = "1px solid #eee";
+
+          const title = document.createElement("a");
+          title.href = `/item.html?id=${encodeURIComponent(it.id)}`;
+          title.target = "_blank";
+          title.textContent = it.name || it.id;
+          title.style.fontSize = "16px";
+          title.style.display = "inline-block";
+          title.style.marginRight = "8px";
+
+          const badge = document.createElement("span");
+          badge.textContent = it.label === "personal" ? "персональная рекомендация" : "поиск";
+          badge.style.background = "#eef";
+          badge.style.padding = "2px 6px";
+          badge.style.marginRight = "8px";
+
+          const meta = document.createElement("div");
+          meta.textContent = `${it.category || ""} • ID ${it.id}`;
+          meta.style.color = "#666";
+
+          const score = document.createElement("div");
+          if (it.score !== undefined) {
+            score.textContent = `score: ${it.score.toFixed(3)}`;
+            score.style.color = "#999";
+          }
+
+          const actions = document.createElement("div");
+          const like = document.createElement("button");
+          like.textContent = "👍";
+          like.onclick = () => {
+            likedIds.add(it.id);
+            dislikedIds.delete(it.id);
+          };
+          const dislike = document.createElement("button");
+          dislike.textContent = "👎";
+          dislike.onclick = () => {
+            dislikedIds.add(it.id);
+            likedIds.delete(it.id);
+          };
+          actions.appendChild(like);
+          actions.appendChild(dislike);
+
+          block.appendChild(title);
+          block.appendChild(badge);
+          block.appendChild(meta);
+          block.appendChild(score);
+          block.appendChild(actions);
+          el.appendChild(block);
+        }
+      };
+
+      const renderSuggestions = (data) => {
+        const el = document.getElementById("suggestions");
+        const s = data.suggestions || {};
+        el.innerHTML = `
+          <div><b>Популярные:</b> ${(s.popular || []).join(", ") || "—"}</div>
+          <div><b>Персональные:</b> ${(s.personal || []).join(", ") || "—"}</div>
+          <div><b>Семантика:</b> ${(s.semantic || []).join(", ") || "—"}</div>
+        `;
+      };
+
+      let currentPage = 1;
+      const likedIds = new Set();
+      const dislikedIds = new Set();
+
+      const loadCompanies = async () => {
+        const kind = document.getElementById("companyType").value;
+        const res = await fetch(`/companies?kind=${kind}`);
+        const data = await res.json();
+        const select = document.getElementById("companySelect");
+        select.innerHTML = "";
+        for (const name of data.companies || []) {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name;
+          select.appendChild(opt);
+        }
+      };
+
+      const safeParse = (value, fallback=[]) => {
+        try { return JSON.parse(value || "[]"); } catch { return fallback; }
+      };
+
+      const run = async () => {
+        currentPage = Number(document.getElementById("page").value || 1);
+        document.getElementById("status").textContent = "Поиск...";
+        const payload = {
+          user_query: document.getElementById("userQuery").value,
+          user_profile: {
+            favorite_categories: safeParse(document.getElementById("favCats").value),
+            purchase_history: safeParse(document.getElementById("purchases").value),
+            recent_actions: safeParse(document.getElementById("recentActions").value)
+          },
+          company: {
+            type: document.getElementById("companyType").value,
+            name: document.getElementById("companySelect").value || ""
+          },
+          page: currentPage,
+          limit: Number(document.getElementById("limit").value || 5),
+          session_feedback: {
+            liked_ids: Array.from(likedIds),
+            disliked_ids: Array.from(dislikedIds)
+          }
+        };
+        try {
+          const res = await fetch("/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          renderResults(data.items || []);
+          renderList(document.getElementById("popularList"), data.popular_items || [], "popular");
+          renderSuggestions(data);
+          document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+          document.getElementById("status").textContent = "";
+        } catch (e) {
+          document.getElementById("status").textContent = "Ошибка запроса. Проверь консоль.";
+          console.error(e);
+        }
+      };
+      document.getElementById("run").addEventListener("click", run);
+      document.getElementById("next").addEventListener("click", () => {
+        currentPage += 1;
+        document.getElementById("page").value = String(currentPage);
+        run();
+      });
+      document.getElementById("prev").addEventListener("click", () => {
+        currentPage = Math.max(1, currentPage - 1);
+        document.getElementById("page").value = String(currentPage);
+        run();
+      });
+      document.getElementById("companyType").addEventListener("change", loadCompanies);
+      loadCompanies();
+    </script>
+  </body>
+</html>

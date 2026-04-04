@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import time
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from difflib import SequenceMatcher, get_close_matches
@@ -266,13 +267,16 @@ def match_query(name, category, query_tokens):
 
 def search_catalog_sql(conn, query, limit=50, offset=0):
     q = normalize_query(query)
+    q_fts = normalize_fts_query(query)
     if not q:
         return []
+    if not q_fts:
+        q_fts = q
     rows = conn.execute(
         "SELECT s.id, s.name, s.category, s.attributes "
         "FROM ste_fts f JOIN ste s ON s.rowid = f.rowid "
         "WHERE ste_fts MATCH ? LIMIT ? OFFSET ?",
-        (q, limit, offset),
+        (q_fts, limit, offset),
     ).fetchall()
     if not rows:
         tokens = [t for t in q.split() if t]
@@ -353,6 +357,13 @@ def build_ste_index(ste_path, needed_ids):
 
 def normalize_query(q):
     return " ".join(q.strip().lower().split())
+
+
+def normalize_fts_query(q):
+    if not q:
+        return ""
+    tokens = re.findall(r"[0-9a-zA-Zа-яА-ЯёЁ]+", q.lower())
+    return " ".join(tokens)
 
 
 _BRAND_VARIANTS = {
@@ -856,6 +867,24 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
                 boost_categories.add(it.get("category", ""))
                 boost_tokens |= set(normalize_query(it.get("name", "")).split())
 
+    def personal_reasons(it):
+        reasons = []
+        if it["id"] in liked_ids:
+            reasons.append("лайк")
+        if it["id"] in long_dwell_ids:
+            reasons.append("долгое чтение")
+        if it["id"] in visited_ids:
+            reasons.append("посещение")
+        if it["id"] in personal_id_set:
+            reasons.append("история/профиль компании")
+        if boost_categories and it.get("category") in boost_categories:
+            reasons.append("категория интереса")
+        if boost_tokens:
+            name_tokens = set(normalize_query(it.get("name", "")).split())
+            if name_tokens & boost_tokens:
+                reasons.append("похоже на понравившееся")
+        return reasons
+
     def is_personal_hit(it):
         if it["id"] in personal_id_set:
             return True
@@ -901,6 +930,13 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
                 name_tokens = set(normalize_query(it.get("name", "")).split())
                 if name_tokens & boost_tokens:
                     it["score"] += 0.12
+        for it in reranked:
+            reasons = personal_reasons(it)
+            if reasons:
+                it["label"] = "personal"
+                it["personal_reason"] = reasons[:3]
+            else:
+                it["label"] = "personal" if it["id"] in personal_id_set else "search"
         reranked.sort(key=lambda x: x.get("score", 0), reverse=True)
         if scroll_pattern == "personalized":
             primary = [it for it in reranked if is_personal_hit(it)]
@@ -912,6 +948,18 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
             page_items = reranked[offset:offset + limit]
     else:
         page_items = (labeled_personal + labeled_search)[offset:offset + limit]
+        for it in page_items:
+            reasons = []
+            if it["id"] in personal_id_set:
+                reasons.append("история/профиль компании")
+            if it["id"] in liked_ids:
+                reasons.append("лайк")
+            if it["id"] in long_dwell_ids:
+                reasons.append("долгое чтение")
+            if it["id"] in visited_ids:
+                reasons.append("посещение")
+            if reasons:
+                it["personal_reason"] = reasons[:3]
     t_page = time.perf_counter()
 
     metrics = {

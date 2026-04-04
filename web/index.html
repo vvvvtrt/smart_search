@@ -1,287 +1,550 @@
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Search Agent</title>
-    <style>
-      body { font-family: system-ui, sans-serif; margin: 24px; max-width: 960px; }
-      h1 { margin-bottom: 6px; }
-      textarea, input { width: 100%; padding: 10px; margin: 6px 0 12px; }
-      button { padding: 10px 16px; cursor: pointer; }
-      pre { background: #f6f8fa; padding: 12px; overflow: auto; }
-      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-      @media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
-    </style>
-  </head>
-  <body>
-    <h1>Поиск по СТЕ</h1>
-    <p>Поиск с персонализацией и рекомендациями.</p>
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Портал поставщиков</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2E}
 
-    <label>Поисковый запрос</label>
-    <input id="userQuery" value="флешка 16 гб" />
+/* HEADER */
+.hdr{background:#fff;padding:0 40px;height:62px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #E8E8EE}
+.logo{display:flex;align-items:center;gap:9px;cursor:pointer}
+.logo-box{width:36px;height:36px;background:#C0392B;border-radius:5px;display:flex;align-items:center;justify-content:center}
+.logo-box svg{width:20px;height:20px}
+.logo-text .l1{font-size:13px;font-weight:900;color:#C0392B;letter-spacing:.07em;line-height:1.1}
+.logo-text .l2{font-size:9.5px;color:#888;letter-spacing:.1em;font-weight:500}
+.hdr-login{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:#2B4ECC;cursor:pointer;border:none;background:none;font-family:inherit}
+.hdr-login svg{color:#2B4ECC}
+.hdr-login:hover{color:#1A3AAA}
 
-    <div class="row">
-      <div>
-        <label>favorite_categories (JSON array)</label>
-        <textarea id="favCats">["Usb-накопители твердотельные (флеш-драйвы)"]</textarea>
+/* HERO */
+.hero{position:relative;background:#fff;overflow:hidden;padding:48px 40px 40px;text-align:center}
+.hero-blob-r{position:absolute;top:-60px;right:-80px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(43,78,204,.18) 0%,transparent 70%);pointer-events:none}
+.hero-blob-l{position:absolute;top:-40px;left:-100px;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(192,57,43,.15) 0%,transparent 70%);pointer-events:none}
+.hero h1{font-size:28px;font-weight:800;color:#1A1A2E;margin-bottom:6px;position:relative;z-index:1}
+.hero-sub{font-size:14px;color:#888;margin-bottom:22px;position:relative;z-index:1}
+
+/* TAGS */
+.tags{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:22px;position:relative;z-index:1}
+.tag{font-size:13px;color:#444;background:#fff;border:1px solid #DDD;border-radius:22px;padding:5px 14px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;transition:border-color .15s,box-shadow .15s}
+.tag:hover{border-color:#2B4ECC;color:#2B4ECC}
+.tag.hot{border-color:#DDD;font-weight:600;color:#2B4ECC}
+.tag-trend{width:18px;height:18px;background:linear-gradient(135deg,#2B4ECC,#5B7EFF);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tag-trend svg{width:10px;height:10px;stroke:#fff;fill:none}
+
+/* SEARCH */
+.search-wrap{max-width:680px;margin:0 auto;position:relative;z-index:1}
+.search-bar{display:flex;align-items:center;background:#fff;border:1.5px solid #D5D8E8;border-radius:50px;padding:6px 6px 6px 22px;box-shadow:0 2px 20px rgba(43,78,204,.08);transition:border-color .2s,box-shadow .2s}
+.search-bar:focus-within{border-color:#2B4ECC;box-shadow:0 2px 24px rgba(43,78,204,.15)}
+.search-bar svg{flex-shrink:0;margin-right:10px;color:#AAA}
+.search-bar input{flex:1;border:none;outline:none;font-size:15px;color:#1A1A2E;background:transparent;font-family:inherit;min-width:0}
+.search-bar input::placeholder{color:#BBB}
+.search-submit{background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border:none;border-radius:44px;padding:11px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:opacity .15s}
+.search-submit:hover{opacity:.88}
+.company-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.company-label{font-size:13px;color:#666}
+.company-toggle{display:flex;border:1px solid #D5D8E8;border-radius:18px;overflow:hidden}
+.company-toggle button{border:none;background:#fff;padding:6px 12px;font-size:12px;font-weight:700;color:#2B4ECC;cursor:pointer}
+.company-toggle button.active{background:#2B4ECC;color:#fff}
+.company-select{border:1px solid #D5D8E8;border-radius:18px;padding:6px 12px;font-size:12px;min-width:260px;background:#fff;font-family:inherit}
+.search-status{margin-top:10px;font-size:12px;color:#777}
+.variant-row{margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.variant-title{font-size:12px;color:#777}
+.variant-btn{border:1px solid #D5D8E8;background:#fff;border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.variant-btn:hover{border-color:#2B4ECC;color:#2B4ECC}
+.load-more-row{display:flex;justify-content:center;margin-top:12px}
+.load-more-btn{background:#fff;border:1.5px solid #D5D8E8;border-radius:18px;padding:8px 16px;font-size:12px;font-weight:700;color:#2B4ECC;cursor:pointer;font-family:inherit}
+.load-more-btn:hover{border-color:#2B4ECC}
+
+/* SECTOR */
+.sector-wrap{background:#F2F3F7;padding:36px 40px 0;text-align:center}
+.sector-title{font-size:22px;font-weight:800;color:#1A1A2E;margin-bottom:6px}
+.sector-animated{font-size:16px;margin-bottom:20px}
+.sector-animated a{color:#2B4ECC;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.sector-pills{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:28px}
+.spill{font-size:13px;font-weight:600;border-radius:22px;padding:7px 16px;cursor:pointer;font-family:inherit;white-space:nowrap;border:1.5px solid #D5D8E8;background:#fff;color:#444;transition:all .18s}
+.spill.active{background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border-color:transparent;box-shadow:0 3px 14px rgba(43,78,204,.22)}
+.spill:not(.active):hover{border-color:#2B4ECC;color:#2B4ECC}
+
+/* PERS CARDS */
+.pers-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:0 40px 36px;background:#F2F3F7}
+.big-card{background:#fff;border-radius:14px;overflow:hidden;cursor:pointer;border:1.5px solid #EAEAF0;transition:box-shadow .2s,border-color .2s}
+.big-card:hover{box-shadow:0 6px 24px rgba(43,78,204,.12);border-color:#C5CEF5}
+.big-card-img{height:160px;display:flex;align-items:center;justify-content:center;font-size:62px;background:#F6F7FB}
+.big-card-body{padding:14px}
+.big-price{font-size:20px;font-weight:900;color:#1A1A2E;margin-bottom:3px}
+.big-price span{font-size:14px;font-weight:700}
+.big-name{font-size:13px;color:#666;margin-bottom:12px;line-height:1.35}
+.big-btn{width:100%;background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s}
+.big-btn:hover{opacity:.87}
+
+/* POPULAR */
+.pop-section{background:#F2F3F7;padding:0 40px 44px}
+.sec-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px}
+.sec-title{font-size:18px;font-weight:800;color:#1A1A2E}
+.sec-all{font-size:13px;color:#2B4ECC;cursor:pointer;display:flex;align-items:center;gap:3px}
+.sec-all:hover{text-decoration:underline}
+.pop-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.pcard{background:#fff;border-radius:12px;overflow:hidden;cursor:pointer;border:1px solid #EAEAF0;position:relative;transition:box-shadow .2s}
+.pcard:hover{box-shadow:0 4px 18px rgba(43,78,204,.1)}
+.pcard-top{position:relative;height:150px;background:#F6F7FB;display:flex;align-items:center;justify-content:center;font-size:52px}
+.badge-hot{position:absolute;top:10px;left:10px;background:#fff;border:1px solid #FFE0D6;border-radius:5px;padding:3px 8px;font-size:10px;font-weight:700;color:#C0392B;display:flex;align-items:center;gap:4px}
+.badge-hot-dot{font-size:12px}
+.btn-fav{position:absolute;top:10px;right:10px;width:28px;height:28px;background:#fff;border:1px solid #EAEAF0;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.btn-fav svg{width:14px;height:14px;stroke:#BBB;fill:none}
+.pcard-body{padding:12px}
+.pcard-name{font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:2px;line-height:1.3}
+.pcard-sub{font-size:11px;color:#999;margin-bottom:8px}
+.pcard-price{font-size:17px;font-weight:900;color:#1A1A2E;margin-bottom:8px}
+.pcard-price small{font-size:11px;font-weight:400;color:#999}
+.pcard-stock{font-size:11px;color:#27AE60;display:flex;align-items:center;gap:4px;margin-bottom:10px}
+.pcard-stock-dot{width:6px;height:6px;background:#27AE60;border-radius:50%;flex-shrink:0}
+.pcard-btn{width:100%;background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border:none;border-radius:7px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;transition:opacity .15s}
+.pcard-btn:hover{opacity:.85}
+
+/* SEARCH RESULTS */
+.search-section{background:#F2F3F7;padding:8px 40px 10px}
+.search-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.scard{background:#fff;border-radius:12px;overflow:hidden;border:1px solid #EAEAF0;transition:box-shadow .2s}
+.scard:hover{box-shadow:0 4px 18px rgba(43,78,204,.1)}
+.scard.viewed{border-color:#C5CEF5;box-shadow:0 4px 18px rgba(43,78,204,.15)}
+.scard.personal{border-color:#2B4ECC}
+.scard-body{padding:12px}
+.scard-name{font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:4px;line-height:1.3}
+.scard-sub{font-size:11px;color:#999;margin-bottom:8px}
+.scard-meta{font-size:11px;color:#6E6E86;display:flex;align-items:center;gap:6px}
+.scard-badge{background:#EEF2FF;color:#2B4ECC;border-radius:10px;padding:2px 6px;font-size:10px;font-weight:700}
+.scard-actions{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.scard-like{border:1px solid #EAEAF0;background:#fff;border-radius:8px;padding:6px 8px;font-size:12px;cursor:pointer}
+.scard-like.active{border-color:#2B4ECC;color:#2B4ECC}
+.scard-link{border:1px solid #EAEAF0;background:#F6F7FB;border-radius:8px;padding:6px 8px;font-size:11px;text-decoration:none;color:#2B4ECC;font-weight:700}
+.scard-link:hover{border-color:#2B4ECC}
+
+@media (max-width: 1100px){
+  .pers-grid,.pop-grid,.search-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width: 700px){
+  .pers-grid,.pop-grid,.search-grid{grid-template-columns:1fr}
+  .hdr{padding:0 16px}
+  .hero,.sector-wrap,.pop-section,.search-section{padding-left:16px;padding-right:16px}
+}
+</style>
+</head>
+<body>
+
+<div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="logo">
+    <div class="logo-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <div class="l1">ПОРТАЛ</div>
+      <div class="l2">ПОСТАВЩИКОВ</div>
+    </div>
+  </div>
+  <button class="hdr-login">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Войти
+  </button>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-blob-r"></div>
+  <div class="hero-blob-l"></div>
+  <h1>Умный поиск для бизнеса</h1>
+  <p class="hero-sub">Найдите нужные товары, сравните предложения и закупайте выгодно</p>
+
+  <div class="tags">
+    <div class="tag hot">
+      <div class="tag-trend"><svg viewBox="0 0 24 24" stroke-width="3"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+      Тема: флешки
+    </div>
+    <div class="tag">Тема: Чистящее средство</div>
+    <div class="tag">Тема: Дезинфекция</div>
+    <div class="tag">Тема: проведение ЕГЭ</div>
+    <div class="tag">Тема: Кетамин</div>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-bar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="si" placeholder="Поиск по товарам, брендам, категориям..." />
+      <button class="search-submit" id="searchBtn">Найти</button>
+    </div>
+    <div class="company-row">
+      <div class="company-label">Войти как компания</div>
+      <div class="company-toggle">
+        <button id="companyCustomer" class="active">Заказчик</button>
+        <button id="companySupplier">Поставщик</button>
       </div>
-      <div>
-        <label>purchase_history (JSON array)</label>
-        <textarea id="purchases">["1222958"]</textarea>
+      <select id="companySelect" class="company-select"></select>
+    </div>
+    <div class="search-status" id="searchStatus"></div>
+    <div class="variant-row" id="variantRow" style="display:none">
+      <div class="variant-title">Похожие запросы:</div>
+      <div id="variantButtons"></div>
+    </div>
+  </div>
+
+  <div class="search-section">
+    <div class="sec-row">
+      <div class="sec-title">Результаты поиска</div>
+      <div class="sec-all" id="searchInfo">Поиск по каталогу</div>
+    </div>
+    <div class="search-grid" id="searchGrid"></div>
+    <div class="load-more-row">
+      <button class="load-more-btn" id="loadMoreBtn">Загрузить ещё 8</button>
+    </div>
+  </div>
+</div>
+
+<!-- SECTOR -->
+<div class="sector-wrap">
+  <div class="sector-title">Товары для любой сферы бизнеса</div>
+  <div class="sector-animated">
+    <a id="sectorLabel">здравоохранение</a>
+  </div>
+  <div class="sector-pills">
+    <button class="spill active" data-s="health">🏥 Здравоохранение</button>
+    <button class="spill" data-s="edu">🎓 Образование</button>
+    <button class="spill" data-s="it">💻 ИТ</button>
+    <button class="spill" data-s="build">🏗️ Строительство</button>
+    <button class="spill" data-s="food">🍽️ Питание</button>
+    <button class="spill" data-s="gov">🏛️ Госструктуры</button>
+  </div>
+</div>
+
+<!-- PERSONALIZED GRID -->
+<div class="pers-grid" id="persGrid"></div>
+
+<!-- POPULAR -->
+<div class="pop-section">
+  <div class="sec-row">
+    <div class="sec-title">Популярные товары</div>
+    <div class="sec-all">Смотреть все <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></div>
+  </div>
+  <div class="pop-grid" id="popGrid"></div>
+</div>
+
+</div>
+
+<script>
+const sectors={
+  health:{label:'здравоохранение',items:[
+    {icon:'😷',price:'250',name:'Маски медицинские',sub:'500 шт., трёхслойные'},
+    {icon:'💉',price:'180',name:'Шприцы одноразовые',sub:'5 мл, 100 шт./уп.'},
+    {icon:'🧤',price:'480',name:'Перчатки нитриловые',sub:'100 шт., размер M'},
+    {icon:'💊',price:'320',name:'Антисептик Кожный',sub:'1 литр, флакон-помпа'},
+  ]},
+  edu:{label:'образование',items:[
+    {icon:'📚',price:'1150',name:'Комплект учебников 5 кл.',sub:'по программе ФГОС'},
+    {icon:'🖥️',price:'89500',name:'Интерактивная доска 86"',sub:'TouchElite Pro'},
+    {icon:'✏️',price:'2100',name:'Набор канцелярии',sub:'для класса 30 человек'},
+    {icon:'🪑',price:'3400',name:'Парта ученическая',sub:'регулируемая, берёза'},
+  ]},
+  it:{label:'информационные технологии',items:[
+    {icon:'🖥️',price:'42000',name:'ПК Lenovo ThinkCentre',sub:'i5-12500T, 16 ГБ, SSD'},
+    {icon:'🔌',price:'8700',name:'Коммутатор TP-Link 24-п.',sub:'TL-SG1024, 1 Гбит/с'},
+    {icon:'💾',price:'5200',name:'SSD Samsung 870 EVO 1TB',sub:'2.5", SATA III'},
+    {icon:'📡',price:'3400',name:'Wi-Fi роутер TP-Link',sub:'AX3000, двухдиапазон.'},
+  ]},
+  build:{label:'строительство и ремонт',items:[
+    {icon:'🧱',price:'380',name:'Цемент М500',sub:'мешок 50 кг, ГОСТ'},
+    {icon:'🔧',price:'9800',name:'Шуруповёрт Makita DDF484',sub:'18В, 2 акк. в комплекте'},
+    {icon:'💡',price:'4600',name:'Кабель ВВГ-нг 3×2.5',sub:'100 м, бухта'},
+    {icon:'🪟',price:'12400',name:'Дверной блок стальной',sub:'860×2050, правый'},
+  ]},
+  food:{label:'общественное питание',items:[
+    {icon:'🍳',price:'67000',name:'Плита промышленная 4-кон.',sub:'нержавеющая сталь'},
+    {icon:'🧴',price:'720',name:'Средство GRASS для посуды',sub:'5 л, концентрат'},
+    {icon:'🥡',price:'180',name:'Контейнер PP 500 мл',sub:'50 шт./упаковка'},
+    {icon:'🧊',price:'58000',name:'Шкаф холодильный Polair',sub:'CM114-S, 1400 л'},
+  ]},
+  gov:{label:'государственные структуры',items:[
+    {icon:'🗂️',price:'290',name:'Папки архивные А4',sub:'с завязками, 10 шт./уп.'},
+    {icon:'🖨️',price:'28500',name:'МФУ Canon imageRUNNER',sub:'2206N, лазерный'},
+    {icon:'📦',price:'1290',name:'Бумага А4 80 г/м²',sub:'500 л, 5 пачек/коробка'},
+    {icon:'💺',price:'9600',name:'Кресло CHAIRMAN 685',sub:'чёрная экокожа'},
+  ]},
+};
+
+const popular=[
+  {icon:'😷',name:'Маски медицинские',sub:'трёхслойные, 50 шт.',price:'250',stock:true},
+  {icon:'🧴',name:'Антисептик для рук',sub:'1 л',price:'750',stock:true},
+  {icon:'💾',name:'Флешка USB 3.0',sub:'32 ГБ',price:'450',stock:true},
+  {icon:'📄',name:'Бумага офисная А4',sub:'500 листов, 80 г/м²',price:'320',stock:true},
+];
+
+function cartIcon(){return`<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>`}
+
+function makeBig(item){
+  return`<div class="big-card">
+    <div class="big-card-img">${item.icon}</div>
+    <div class="big-card-body">
+      <div class="big-price"><span>${item.price} ₽</span></div>
+      <div class="big-name">${item.name}<br><span style="color:#999;font-size:11px">${item.sub}</span></div>
+      <button class="big-btn">${cartIcon()} В корзину</button>
+    </div>
+  </div>`;
+}
+
+function makePop(item){
+  return`<div class="pcard">
+    <div class="pcard-top">
+      <div class="badge-hot"><span class="badge-hot-dot">🔥</span> Хит продаж</div>
+      <div class="btn-fav"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
+      ${item.icon}
+    </div>
+    <div class="pcard-body">
+      <div class="pcard-name">${item.name}</div>
+      <div class="pcard-sub">${item.sub}</div>
+      <div class="pcard-price">${item.price} ₽</div>
+      <div class="pcard-stock"><div class="pcard-stock-dot"></div> В наличии</div>
+      <button class="pcard-btn">${cartIcon()} В корзину</button>
+    </div>
+  </div>`;
+}
+
+function renderSector(key){
+  const s=sectors[key];
+  document.getElementById('sectorLabel').textContent=s.label;
+  document.getElementById('persGrid').innerHTML=s.items.map(makeBig).join('');
+}
+
+document.querySelectorAll('.spill').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.spill').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    renderSector(b.dataset.s);
+  });
+});
+
+document.getElementById('popGrid').innerHTML=popular.map(makePop).join('');
+renderSector('health');
+
+// Animated sector label
+const sectorKeys=Object.keys(sectors);
+let si2=0;
+setInterval(()=>{
+  const activeBtn=document.querySelector('.spill.active');
+  if(activeBtn)return;
+  si2=(si2+1)%sectorKeys.length;
+  const lbl=document.getElementById('sectorLabel');
+  lbl.style.opacity='0';
+  setTimeout(()=>{lbl.textContent=sectors[sectorKeys[si2]].label;lbl.style.opacity='1';},220);
+},2200);
+document.getElementById('sectorLabel').style.transition='opacity .2s';
+
+// Search placeholder anim
+const phs=['Маски медицинские, от 100 шт.','Флешка USB 3.0, оптом','Чистящее средство для офиса','Дезинфекция помещений','Кетамин, сертификат качества'];
+let pi=0,ci=0,erasing=false;
+const inp=document.getElementById('si');
+function tick(){
+  if(document.activeElement===inp){setTimeout(tick,400);return;}
+  const t=phs[pi];
+  if(!erasing){
+    if(ci<=t.length){inp.setAttribute('placeholder',t.slice(0,ci));ci++;}
+    else{erasing=false;setTimeout(tick,1600);return;}
+  }
+  setTimeout(tick,erasing?30:60);
+  if(ci>t.length+2&&!erasing){erasing=true;}
+  if(erasing){ci--;if(ci<0){erasing=false;ci=0;pi=(pi+1)%phs.length;}}
+}
+setTimeout(tick,800);
+
+// --- Search integration ---
+const companySelect=document.getElementById('companySelect');
+const searchGrid=document.getElementById('searchGrid');
+const searchStatus=document.getElementById('searchStatus');
+const searchInfo=document.getElementById('searchInfo');
+const variantRow=document.getElementById('variantRow');
+const variantButtons=document.getElementById('variantButtons');
+const loadMoreBtn=document.getElementById('loadMoreBtn');
+const likedIds=new Set();
+const longDwellIds=new Set();
+const visitedIds=new Set();
+let companyKind='customer';
+let searchPage=1;
+let lastQuery='';
+
+function setCompanyKind(kind){
+  companyKind=kind;
+  document.getElementById('companyCustomer').classList.toggle('active',kind==='customer');
+  document.getElementById('companySupplier').classList.toggle('active',kind==='supplier');
+  loadCompanies();
+}
+
+async function loadCompanies(){
+  try{
+    const res=await fetch(`/companies?kind=${companyKind}`);
+    const data=await res.json();
+    companySelect.innerHTML='';
+    (data.companies||[]).forEach(name=>{
+      const opt=document.createElement('option');
+      opt.value=name;
+      opt.textContent=name;
+      companySelect.appendChild(opt);
+    });
+  }catch(e){
+    companySelect.innerHTML='<option value="">Нет данных</option>';
+  }
+}
+
+function makeSearchCard(it){
+  const badge=it.label==='personal'?'персональная':'поиск';
+  const liked=likedIds.has(it.id);
+  const reason=(it.personal_reason||[]).join(' • ');
+  const classes=['scard'];
+  if(it.label==='personal') classes.push('personal');
+  if(visitedIds.has(it.id)) classes.push('viewed');
+  return `
+    <div class="${classes.join(' ')}">
+      <div class="scard-body">
+        <div class="scard-name"><a href="/item.html?id=${encodeURIComponent(it.id)}" data-view="${it.id}" style="color:inherit;text-decoration:none">${it.name || it.id}</a></div>
+        <div class="scard-sub">${it.category || ''}</div>
+        <div class="scard-meta">
+          <span class="scard-badge">${badge}</span>
+          <span>ID ${it.id}</span>
+        </div>
+        ${reason ? `<div class="scard-sub">Почему: ${reason}</div>` : ''}
+        <div class="scard-actions">
+          <button class="scard-like ${liked?'active':''}" data-like="${it.id}">
+            ${liked?'👍 Лайк':'👍 Лайк'}
+          </button>
+          <a class="scard-link" href="/item.html?id=${encodeURIComponent(it.id)}" data-view="${it.id}">Профиль</a>
+          <button class="pcard-btn" style="padding:6px 10px;font-size:11px">${cartIcon()} В корзину</button>
+        </div>
       </div>
     </div>
+  `;
+}
 
-    <div class="row">
-      <div>
-        <label>company type</label>
-        <select id="companyType">
-          <option value="customer">customer</option>
-          <option value="supplier">supplier</option>
-        </select>
-      </div>
-      <div>
-        <label>company</label>
-        <select id="companySelect"></select>
-      </div>
-    </div>
-
-    <label>recent_actions (JSON array)</label>
-    <textarea id="recentActions">["флеш накопитель smartbuy"]</textarea>
-
-    <div class="row">
-      <div>
-        <label>page</label>
-        <input id="page" value="1" />
-      </div>
-      <div>
-        <label>limit</label>
-        <input id="limit" value="5" />
-      </div>
-    </div>
-
-    <button id="run">Найти</button>
-    <button id="prev">←</button>
-    <button id="next">→</button>
-    <span id="status"></span>
-
-    <h3>Результаты</h3>
-    <div id="results"></div>
-
-    <h3>Популярное</h3>
-    <ul id="popularList"></ul>
-
-    <h3>Подсказки</h3>
-    <div id="suggestions"></div>
-
-    <details>
-      <summary>Raw JSON</summary>
-      <pre id="output">{}</pre>
-    </details>
-
-    <script>
-      const renderList = (el, items, label) => {
-        el.innerHTML = "";
-        if (!items || items.length === 0) {
-          el.innerHTML = "<li>—</li>";
-          return;
-        }
-        for (const it of items) {
-          const li = document.createElement("li");
-          const a = document.createElement("a");
-          a.href = `/item.html?id=${encodeURIComponent(it.id)}`;
-          a.textContent = `${it.name} (${it.category})`;
-          a.target = "_blank";
-          const badge = document.createElement("span");
-          badge.textContent = ` [${label}]`;
-          li.appendChild(a);
-          li.appendChild(badge);
-          el.appendChild(li);
-        }
-      };
-
-      const renderResults = (items) => {
-        const el = document.getElementById("results");
-        el.innerHTML = "";
-        if (!items || items.length === 0) {
-          el.textContent = "Ничего не найдено";
-          return;
-        }
-        for (const it of items) {
-          const block = document.createElement("div");
-          block.style.padding = "10px 0";
-          block.style.borderBottom = "1px solid #eee";
-
-          const title = document.createElement("a");
-          title.href = `/item.html?id=${encodeURIComponent(it.id)}`;
-          title.target = "_blank";
-          title.textContent = it.name || it.id;
-          title.style.fontSize = "16px";
-          title.style.display = "inline-block";
-          title.style.marginRight = "8px";
-          title.addEventListener("click", () => {
-            storeVisited(it.id);
-          });
-
-          const badge = document.createElement("span");
-          badge.textContent = it.label === "personal" ? "персональная рекомендация" : "поиск";
-          badge.style.background = "#eef";
-          badge.style.padding = "2px 6px";
-          badge.style.marginRight = "8px";
-
-          const meta = document.createElement("div");
-          meta.textContent = `${it.category || ""} • ID ${it.id}`;
-          meta.style.color = "#666";
-
-          const score = document.createElement("div");
-          if (it.score !== undefined) {
-            score.textContent = `score: ${it.score.toFixed(3)}`;
-            score.style.color = "#999";
-          }
-
-          const actions = document.createElement("div");
-          const like = document.createElement("button");
-          like.textContent = "👍";
-          like.onclick = () => {
-            likedIds.add(it.id);
-            dislikedIds.delete(it.id);
-            currentPage = 1;
-            document.getElementById("page").value = "1";
-            run();
-          };
-          const dislike = document.createElement("button");
-          dislike.textContent = "👎";
-          dislike.onclick = () => {
-            dislikedIds.add(it.id);
-            likedIds.delete(it.id);
-            currentPage = 1;
-            document.getElementById("page").value = "1";
-            run();
-          };
-          actions.appendChild(like);
-          actions.appendChild(dislike);
-
-          block.appendChild(title);
-          block.appendChild(badge);
-          block.appendChild(meta);
-          block.appendChild(score);
-          block.appendChild(actions);
-          el.appendChild(block);
-        }
-      };
-
-      const renderSuggestions = (data) => {
-        const el = document.getElementById("suggestions");
-        const s = data.suggestions || {};
-        el.innerHTML = `
-          <div><b>Популярные:</b> ${(s.popular || []).join(", ") || "—"}</div>
-          <div><b>Персональные:</b> ${(s.personal || []).join(", ") || "—"}</div>
-          <div><b>Семантика:</b> ${(s.semantic || []).join(", ") || "—"}</div>
-        `;
-      };
-
-      let currentPage = 1;
-      const likedIds = new Set();
-      const dislikedIds = new Set();
-      const longDwellIds = new Set();
-      const visitedIds = new Set();
-
-      const loadDwell = () => {
-        try {
-          const raw = localStorage.getItem("dwell_ids") || "[]";
-          JSON.parse(raw).forEach(id => longDwellIds.add(id));
-        } catch {}
-      };
-      const loadVisited = () => {
-        try {
-          const raw = localStorage.getItem("view_ids") || "[]";
-          JSON.parse(raw).forEach(id => visitedIds.add(id));
-        } catch {}
-      };
-      const storeVisited = (id) => {
-        if (!id) return;
+function bindLikeButtons(){
+  searchGrid.querySelectorAll('[data-like]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const id=btn.getAttribute('data-like');
+      if(likedIds.has(id)) likedIds.delete(id);
+      else likedIds.add(id);
+      runSearch();
+    });
+  });
+  searchGrid.querySelectorAll('[data-view]').forEach(link=>{
+    link.addEventListener('click',()=>{
+      const id=link.getAttribute('data-view');
+      if(id){
         visitedIds.add(id);
-        try {
-          localStorage.setItem("view_ids", JSON.stringify(Array.from(visitedIds)));
-        } catch {}
-      };
+        try{localStorage.setItem('view_ids',JSON.stringify(Array.from(visitedIds)));}catch(e){}
+      }
+    });
+  });
+}
 
-      const loadCompanies = async () => {
-        const kind = document.getElementById("companyType").value;
-        const res = await fetch(`/companies?kind=${kind}`);
-        const data = await res.json();
-        const select = document.getElementById("companySelect");
-        select.innerHTML = "";
-        for (const name of data.companies || []) {
-          const opt = document.createElement("option");
-          opt.value = name;
-          opt.textContent = name;
-          select.appendChild(opt);
-        }
-      };
-
-      const safeParse = (value, fallback=[]) => {
-        try { return JSON.parse(value || "[]"); } catch { return fallback; }
-      };
-
-      const run = async () => {
-        currentPage = Number(document.getElementById("page").value || 1);
-        document.getElementById("status").textContent = "Поиск...";
-        const payload = {
-          user_query: document.getElementById("userQuery").value,
-          user_profile: {
-            favorite_categories: safeParse(document.getElementById("favCats").value),
-            purchase_history: safeParse(document.getElementById("purchases").value),
-            recent_actions: safeParse(document.getElementById("recentActions").value)
-          },
-          company: {
-            type: document.getElementById("companyType").value,
-            name: document.getElementById("companySelect").value || ""
-          },
-          page: currentPage,
-          limit: Number(document.getElementById("limit").value || 5),
-          session_feedback: {
-            liked_ids: Array.from(likedIds),
-            disliked_ids: Array.from(dislikedIds),
-            long_dwell_ids: Array.from(longDwellIds),
-            visited_ids: Array.from(visitedIds)
-          }
-        };
-        try {
-          const res = await fetch("/search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          renderResults(data.items || []);
-          renderList(document.getElementById("popularList"), data.popular_items || [], "popular");
-          renderSuggestions(data);
-          document.getElementById("output").textContent = JSON.stringify(data, null, 2);
-          const pattern = data.scroll_pattern || "default";
-          const m = data.metrics || {};
-          const total = m.total_ms !== undefined ? `${m.total_ms}мс` : "—";
-          document.getElementById("status").textContent = `Готово • паттерн: ${pattern} • ${total}`;
-        } catch (e) {
-          document.getElementById("status").textContent = "Ошибка запроса. Проверь консоль.";
-          console.error(e);
-        }
-      };
-      document.getElementById("run").addEventListener("click", run);
-      document.getElementById("next").addEventListener("click", () => {
-        currentPage += 1;
-        document.getElementById("page").value = String(currentPage);
-        run();
+async function runSearch(){
+  const q=inp.value.trim();
+  if(!q){searchStatus.textContent='Введите запрос';return;}
+  lastQuery=q;
+  searchPage=1;
+  searchStatus.textContent='Поиск...';
+  variantRow.style.display='none';
+  variantButtons.innerHTML='';
+  const payload={
+    user_query:q,
+    user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
+    company:{type:companyKind,name:companySelect.value||''},
+    page:searchPage,
+    limit:8,
+    session_feedback:{
+      liked_ids:Array.from(likedIds),
+      disliked_ids:[],
+      long_dwell_ids:Array.from(longDwellIds),
+      visited_ids:Array.from(visitedIds)
+    }
+  };
+  try{
+    const res=await fetch('/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const items=data.items||[];
+    searchGrid.innerHTML=items.map(makeSearchCard).join('') || '<div>Ничего не найдено</div>';
+    bindLikeButtons();
+    const m=data.metrics||{};
+    const total=m.total_ms!==undefined?`${m.total_ms}мс`:'—';
+    searchStatus.textContent=`Готово • паттерн: ${data.scroll_pattern||'default'} • ${total}`;
+    searchInfo.textContent=`Найдено: ${items.length}`;
+    const variants=[...(data.expanded_queries||[]),...(data.suggestions?.personal||[]),...(data.suggestions?.semantic||[])];
+    const uniq=[];
+    const seen=new Set();
+    variants.forEach(v=>{if(v && !seen.has(v)){seen.add(v);uniq.push(v);}});
+    if(uniq.length){
+      variantButtons.innerHTML=uniq.slice(0,8).map(v=>`<button class="variant-btn" data-q="${v}">${v}</button>`).join('');
+      variantRow.style.display='flex';
+      variantButtons.querySelectorAll('[data-q]').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          inp.value=btn.getAttribute('data-q');
+          runSearch();
+        });
       });
-      document.getElementById("prev").addEventListener("click", () => {
-        currentPage = Math.max(1, currentPage - 1);
-        document.getElementById("page").value = String(currentPage);
-        run();
-      });
-      document.getElementById("companyType").addEventListener("change", loadCompanies);
-      loadDwell();
-      loadVisited();
-      loadCompanies();
-    </script>
-  </body>
+    }
+  }catch(e){
+    searchStatus.textContent='Ошибка поиска';
+  }
+}
+
+async function loadMore(){
+  if(!lastQuery){return;}
+  searchStatus.textContent='Загружаем...';
+  searchPage+=1;
+  const payload={
+    user_query:lastQuery,
+    user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
+    company:{type:companyKind,name:companySelect.value||''},
+    page:searchPage,
+    limit:8,
+    session_feedback:{
+      liked_ids:Array.from(likedIds),
+      disliked_ids:[],
+      long_dwell_ids:Array.from(longDwellIds),
+      visited_ids:Array.from(visitedIds)
+    }
+  };
+  try{
+    const res=await fetch('/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const items=data.items||[];
+    if(items.length===0){searchStatus.textContent='Больше нет результатов';return;}
+    const html=items.map(makeSearchCard).join('');
+    searchGrid.insertAdjacentHTML('beforeend',html);
+    bindLikeButtons();
+    const m=data.metrics||{};
+    const total=m.total_ms!==undefined?`${m.total_ms}мс`:'—';
+    searchStatus.textContent=`Готово • паттерн: ${data.scroll_pattern||'default'} • ${total}`;
+    searchInfo.textContent=`Найдено: ${searchGrid.children.length}`;
+  }catch(e){
+    searchStatus.textContent='Ошибка загрузки';
+  }
+}
+
+document.getElementById('searchBtn').addEventListener('click',runSearch);
+inp.addEventListener('keydown',e=>{if(e.key==='Enter')runSearch();});
+document.getElementById('companyCustomer').addEventListener('click',()=>setCompanyKind('customer'));
+document.getElementById('companySupplier').addEventListener('click',()=>setCompanyKind('supplier'));
+loadMoreBtn.addEventListener('click',loadMore);
+try{
+  JSON.parse(localStorage.getItem('dwell_ids')||'[]').forEach(id=>longDwellIds.add(id));
+  JSON.parse(localStorage.getItem('view_ids')||'[]').forEach(id=>visitedIds.add(id));
+}catch(e){}
+loadCompanies();
+</script>
+</body>
 </html>

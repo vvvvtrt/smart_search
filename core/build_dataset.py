@@ -10,7 +10,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from core.search_agent import ensure_db_ready, DB_PATH
+from core.retrieval import ensure_db_ready, DB_PATH
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(ROOT_DIR, "data", "search.db"))
 OUT_PATH = os.environ.get("DATASET_PATH", os.path.join(ROOT_DIR, "data", "train.csv"))

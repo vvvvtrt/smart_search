@@ -3,6 +3,8 @@ import csv
 import os
 import sqlite3
 
+from core.normalization import lemmatize_text
+
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 STE_PATH = os.environ.get("DATA_STE_PATH", os.path.join(ROOT_DIR, "data", "СТЕ_20260403.csv"))
 CONTRACTS_PATH = os.environ.get("DATA_CONTRACTS_PATH", os.path.join(ROOT_DIR, "data", "Контракты_20260403.csv"))
@@ -26,10 +28,18 @@ def build_db():
     conn.execute("PRAGMA synchronous=NORMAL;")
 
     conn.execute(
-        "CREATE TABLE ste (id TEXT PRIMARY KEY, name TEXT, category TEXT, attributes TEXT)"
+        "CREATE TABLE ste ("
+        "id TEXT PRIMARY KEY, "
+        "name TEXT, "
+        "name_lemma TEXT, "
+        "category TEXT, "
+        "category_lemma TEXT, "
+        "attributes TEXT)"
     )
     conn.execute(
-        "CREATE VIRTUAL TABLE ste_fts USING fts5(id, name, category, attributes, content='ste', content_rowid='rowid')"
+        "CREATE VIRTUAL TABLE ste_fts USING fts5("
+        "id, name, name_lemma, category, category_lemma, attributes, "
+        "content='ste', content_rowid='rowid')"
     )
     conn.execute(
         "CREATE TABLE contracts (item_name TEXT, contract_id TEXT, ste_id TEXT, created_at TEXT, price TEXT, customer_inn TEXT, customer_name TEXT, customer_region TEXT, supplier_inn TEXT, supplier_name TEXT, supplier_region TEXT)"
@@ -43,12 +53,20 @@ def build_db():
         name = row[1].strip() if len(row) > 1 else ""
         category = row[2].strip() if len(row) > 2 else ""
         attributes = row[3].strip() if len(row) > 3 else ""
-        ste_rows.append((ste_id, name, category, attributes))
+        name_lemma = lemmatize_text(name or "")
+        category_lemma = lemmatize_text(category or "")
+        ste_rows.append((ste_id, name, name_lemma, category, category_lemma, attributes))
         if len(ste_rows) >= 5000:
-            conn.executemany("INSERT OR IGNORE INTO ste VALUES (?,?,?,?)", ste_rows)
+            conn.executemany(
+                "INSERT OR IGNORE INTO ste VALUES (?,?,?,?,?,?)",
+                ste_rows,
+            )
             ste_rows = []
     if ste_rows:
-        conn.executemany("INSERT OR IGNORE INTO ste VALUES (?,?,?,?)", ste_rows)
+        conn.executemany(
+            "INSERT OR IGNORE INTO ste VALUES (?,?,?,?,?,?)",
+            ste_rows,
+        )
 
     conn.execute("INSERT INTO ste_fts(ste_fts) VALUES ('rebuild')")
 

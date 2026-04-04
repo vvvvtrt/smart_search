@@ -60,4 +60,12 @@ python /Users/mikhail/Documents/PythonProject/hack_tender_1/core/train_model.py 
 
 CatBoost используется только если модель существует. Иначе работает эвристика.
 
+## Производительность
+
+- CatBoost использует все ядра по умолчанию (через `CATBOOST_THREADS`).
+- Для локального старта можно задать:
+```bash
+export CATBOOST_THREADS=10
+```
+
 Данные читаются из `./data`. Контейнер монтирует их в `/app/data` (read‑only) и хранит кэш в volume `cache`.

@@ -119,6 +119,9 @@
           title.style.fontSize = "16px";
           title.style.display = "inline-block";
           title.style.marginRight = "8px";
+          title.addEventListener("click", () => {
+            storeVisited(it.id);
+          });
 
           const badge = document.createElement("span");
           badge.textContent = it.label === "personal" ? "персональная рекомендация" : "поиск";
@@ -142,12 +145,18 @@
           like.onclick = () => {
             likedIds.add(it.id);
             dislikedIds.delete(it.id);
+            currentPage = 1;
+            document.getElementById("page").value = "1";
+            run();
           };
           const dislike = document.createElement("button");
           dislike.textContent = "👎";
           dislike.onclick = () => {
             dislikedIds.add(it.id);
             likedIds.delete(it.id);
+            currentPage = 1;
+            document.getElementById("page").value = "1";
+            run();
           };
           actions.appendChild(like);
           actions.appendChild(dislike);
@@ -174,6 +183,28 @@
       let currentPage = 1;
       const likedIds = new Set();
       const dislikedIds = new Set();
+      const longDwellIds = new Set();
+      const visitedIds = new Set();
+
+      const loadDwell = () => {
+        try {
+          const raw = localStorage.getItem("dwell_ids") || "[]";
+          JSON.parse(raw).forEach(id => longDwellIds.add(id));
+        } catch {}
+      };
+      const loadVisited = () => {
+        try {
+          const raw = localStorage.getItem("view_ids") || "[]";
+          JSON.parse(raw).forEach(id => visitedIds.add(id));
+        } catch {}
+      };
+      const storeVisited = (id) => {
+        if (!id) return;
+        visitedIds.add(id);
+        try {
+          localStorage.setItem("view_ids", JSON.stringify(Array.from(visitedIds)));
+        } catch {}
+      };
 
       const loadCompanies = async () => {
         const kind = document.getElementById("companyType").value;
@@ -211,7 +242,9 @@
           limit: Number(document.getElementById("limit").value || 5),
           session_feedback: {
             liked_ids: Array.from(likedIds),
-            disliked_ids: Array.from(dislikedIds)
+            disliked_ids: Array.from(dislikedIds),
+            long_dwell_ids: Array.from(longDwellIds),
+            visited_ids: Array.from(visitedIds)
           }
         };
         try {
@@ -225,7 +258,10 @@
           renderList(document.getElementById("popularList"), data.popular_items || [], "popular");
           renderSuggestions(data);
           document.getElementById("output").textContent = JSON.stringify(data, null, 2);
-          document.getElementById("status").textContent = "";
+          const pattern = data.scroll_pattern || "default";
+          const m = data.metrics || {};
+          const total = m.total_ms !== undefined ? `${m.total_ms}мс` : "—";
+          document.getElementById("status").textContent = `Готово • паттерн: ${pattern} • ${total}`;
         } catch (e) {
           document.getElementById("status").textContent = "Ошибка запроса. Проверь консоль.";
           console.error(e);
@@ -243,6 +279,8 @@
         run();
       });
       document.getElementById("companyType").addEventListener("change", loadCompanies);
+      loadDwell();
+      loadVisited();
       loadCompanies();
     </script>
   </body>

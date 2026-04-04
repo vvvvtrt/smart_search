@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import sqlite3
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from difflib import SequenceMatcher, get_close_matches
@@ -27,6 +28,13 @@ DB_PATH = os.environ.get(
     "DB_PATH",
     os.path.join(ROOT_DIR, "data", "search.db"),
 )
+
+_MEMO = {
+    "db_mtime": None,
+    "top_categories": [],
+    "contract_names": {},
+    "contract_names_key": None,
+}
 
 
 def ensure_db_ready():
@@ -141,6 +149,94 @@ def load_contract_names(contracts_path, ste_ids, limit_per_id=1):
             if not remaining:
                 break
     return names
+
+
+def chunked(values, size=900):
+    buf = []
+    for v in values:
+        buf.append(v)
+        if len(buf) >= size:
+            yield buf
+            buf = []
+    if buf:
+        yield buf
+
+
+def compute_contract_stats_sql(conn, top_n=5000, top_companies=500):
+    total_row = conn.execute("SELECT COUNT(1) FROM contracts").fetchone()
+    total = int(total_row[0]) if total_row and total_row[0] is not None else 0
+
+    rows = conn.execute(
+        "SELECT ste_id, COUNT(1) as cnt FROM contracts GROUP BY ste_id ORDER BY cnt DESC LIMIT ?",
+        (top_n,),
+    ).fetchall()
+    top_ste_ids = [str(sid) for sid, _ in rows]
+    top_ste_counts = {str(sid): int(cnt) for sid, cnt in rows}
+
+    customer_rows = conn.execute(
+        "SELECT customer_name, COUNT(1) as cnt FROM contracts WHERE customer_name != '' "
+        "GROUP BY customer_name ORDER BY cnt DESC LIMIT ?",
+        (top_companies,),
+    ).fetchall()
+    supplier_rows = conn.execute(
+        "SELECT supplier_name, COUNT(1) as cnt FROM contracts WHERE supplier_name != '' "
+        "GROUP BY supplier_name ORDER BY cnt DESC LIMIT ?",
+        (top_companies,),
+    ).fetchall()
+
+    return {
+        "total_contract_rows": total,
+        "top_ste_ids": top_ste_ids,
+        "top_ste_counts": top_ste_counts,
+        "top_customers": [n for n, _ in customer_rows],
+        "top_suppliers": [n for n, _ in supplier_rows],
+    }
+
+
+def load_contract_names_sql(conn, ste_ids):
+    names = {}
+    if not ste_ids:
+        return names
+    for batch in chunked(ste_ids):
+        placeholders = ",".join(["?"] * len(batch))
+        rows = conn.execute(
+            f"SELECT ste_id, MIN(item_name) FROM contracts "
+            f"WHERE ste_id IN ({placeholders}) AND item_name != '' GROUP BY ste_id",
+            batch,
+        ).fetchall()
+        for ste_id, item_name in rows:
+            if item_name:
+                names[str(ste_id)] = item_name
+    return names
+
+
+def build_ste_index_sql(conn, needed_ids):
+    index = {}
+    if not needed_ids:
+        return index
+    for batch in chunked(list(needed_ids)):
+        placeholders = ",".join(["?"] * len(batch))
+        rows = conn.execute(
+            f"SELECT id, name, category, attributes FROM ste WHERE id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        for ste_id, name, category, attributes in rows:
+            index[str(ste_id)] = {
+                "id": str(ste_id),
+                "name": name or "",
+                "category": category or "",
+                "attributes": parse_ste_attributes(attributes),
+            }
+    return index
+
+
+def top_categories_sql(conn, limit=2000):
+    rows = conn.execute(
+        "SELECT category, COUNT(1) as cnt FROM ste WHERE category != '' "
+        "GROUP BY category ORDER BY cnt DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [c for c, _ in rows]
 
 
 def build_company_profiles_sql(conn, companies, kind="customer", limit_ids=200):
@@ -426,6 +522,7 @@ def build_personal_names(purchase_history, ste_index, contract_names=None):
 
 
 def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAULT_PATH):
+    t0 = time.perf_counter()
     user_query = payload.get("user_query", "")
     user_profile = payload.get("user_profile", {}) or {}
     favorite_categories = user_profile.get("favorite_categories", []) or []
@@ -441,17 +538,20 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
     session_feedback = payload.get("session_feedback", {}) or {}
 
     ensure_db_ready()
+    t_db_ready = time.perf_counter()
     conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("PRAGMA temp_store=MEMORY;")
+        conn.execute("PRAGMA cache_size=200000;")
+        conn.execute("PRAGMA mmap_size=268435456;")
+    except Exception:
+        pass
+    t_db_conn = time.perf_counter()
 
     cache = load_cache()
-    ste_mtime = file_mtime(ste_path)
-    con_mtime = file_mtime(contracts_path)
-    if (
-        not cache
-        or cache.get("ste_mtime") != ste_mtime
-        or cache.get("contracts_mtime") != con_mtime
-    ):
-        stats = compute_contract_stats(contracts_path, top_n=5000)
+    db_mtime = file_mtime(DB_PATH)
+    if not cache or cache.get("db_mtime") != db_mtime:
+        stats = compute_contract_stats_sql(conn, top_n=5000)
         customer_profiles = build_company_profiles_sql(
             conn,
             stats.get("top_customers", []),
@@ -465,8 +565,7 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
             limit_ids=200,
         )
         cache = {
-            "ste_mtime": ste_mtime,
-            "contracts_mtime": con_mtime,
+            "db_mtime": db_mtime,
             "stats": stats,
             "customer_profiles": customer_profiles,
             "supplier_profiles": supplier_profiles,
@@ -477,6 +576,7 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
         stats = cache["stats"]
         customer_profiles = cache.get("customer_profiles", {})
         supplier_profiles = cache.get("supplier_profiles", {})
+    t_stats = time.perf_counter()
 
     if mode == "companies_only":
         conn.close()
@@ -500,8 +600,19 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
         for ste_id in profile_map.get(company_name, []):
             needed_ids.add(str(ste_id))
 
-    ste_index, top_categories = build_ste_index(ste_path, needed_ids)
-    contract_names = load_contract_names(contracts_path, stats.get("top_ste_ids", [])[:2000])
+    ste_index = build_ste_index_sql(conn, needed_ids)
+    if _MEMO.get("db_mtime") != db_mtime:
+        _MEMO["db_mtime"] = db_mtime
+        _MEMO["top_categories"] = top_categories_sql(conn, limit=2000)
+        _MEMO["contract_names"] = {}
+        _MEMO["contract_names_key"] = None
+    top_categories = _MEMO.get("top_categories", [])
+    top_ste_key = tuple(stats.get("top_ste_ids", [])[:2000])
+    if _MEMO.get("contract_names_key") != top_ste_key:
+        _MEMO["contract_names"] = load_contract_names_sql(conn, top_ste_key)
+        _MEMO["contract_names_key"] = top_ste_key
+    contract_names = _MEMO.get("contract_names", {})
+    t_indices = time.perf_counter()
 
     popular_names = []
     popular_by_category = defaultdict(list)
@@ -600,6 +711,53 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
                 "is_personal": 1 if item["id"] in personal_id_set else 0,
             })
         reranked = score_items(candidates, features)
+    t_rerank = time.perf_counter()
+
+    # session-based similarity boost (likes / visits / long dwell)
+    liked_ids = set(session_feedback.get("liked_ids", []))
+    visited_ids = set(session_feedback.get("visited_ids", []))
+    long_dwell_ids = set(session_feedback.get("long_dwell_ids", []))
+    boost_ids = liked_ids | visited_ids | long_dwell_ids
+    boost_tokens = set()
+    boost_categories = set()
+    if boost_ids:
+        for bid in boost_ids:
+            for it in candidates:
+                if it["id"] == bid:
+                    boost_categories.add(it.get("category", ""))
+                    boost_tokens |= set(normalize_query(it.get("name", "")).split())
+                    break
+
+    def is_personal_hit(it):
+        if it["id"] in personal_id_set:
+            return True
+        if it["id"] in boost_ids:
+            return True
+        if boost_categories and it.get("category") in boost_categories:
+            return True
+        if boost_tokens:
+            name_tokens = set(normalize_query(it.get("name", "")).split())
+            if name_tokens & boost_tokens:
+                return True
+        return False
+
+    scroll_pattern = "default"
+    if liked_ids or visited_ids or long_dwell_ids:
+        scroll_pattern = "personalized"
+
+    def interleave(primary, secondary, take_primary=2, take_secondary=1):
+        result = []
+        i = j = 0
+        while i < len(primary) or j < len(secondary):
+            for _ in range(take_primary):
+                if i < len(primary):
+                    result.append(primary[i])
+                    i += 1
+            for _ in range(take_secondary):
+                if j < len(secondary):
+                    result.append(secondary[j])
+                    j += 1
+        return result
 
     if reranked:
         liked = set(session_feedback.get("liked_ids", []))
@@ -609,10 +767,37 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
                 it["score"] += 0.2
             if it["id"] in disliked:
                 it["score"] -= 0.2
+            if boost_categories and it.get("category") in boost_categories:
+                it["score"] += 0.1
+            if boost_tokens:
+                name_tokens = set(normalize_query(it.get("name", "")).split())
+                if name_tokens & boost_tokens:
+                    it["score"] += 0.05
         reranked.sort(key=lambda x: x.get("score", 0), reverse=True)
-        page_items = reranked[offset:offset + limit]
+        if scroll_pattern == "personalized":
+            primary = [it for it in reranked if is_personal_hit(it)]
+            primary_ids = {it["id"] for it in primary}
+            secondary = [it for it in reranked if it["id"] not in primary_ids]
+            scroll_list = interleave(primary, secondary, take_primary=1, take_secondary=1)
+            page_items = scroll_list[offset:offset + limit]
+        else:
+            page_items = reranked[offset:offset + limit]
     else:
         page_items = (labeled_personal + labeled_search)[offset:offset + limit]
+    t_page = time.perf_counter()
+
+    metrics = {
+        "total_ms": round((t_page - t0) * 1000, 2),
+        "db_ready_ms": round((t_db_ready - t0) * 1000, 2),
+        "db_connect_ms": round((t_db_conn - t_db_ready) * 1000, 2),
+        "stats_cache_ms": round((t_stats - t_db_conn) * 1000, 2),
+        "indices_ms": round((t_indices - t_stats) * 1000, 2),
+        "rerank_ms": round((t_rerank - t_indices) * 1000, 2),
+        "page_build_ms": round((t_page - t_rerank) * 1000, 2),
+        "candidates": len(candidates),
+        "items_returned": len(page_items),
+        "cache_hit": cache is not None and cache.get("db_mtime") == db_mtime,
+    }
 
     result = {
         "corrected_query": corrected_query,
@@ -622,6 +807,8 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
         "filters": category_filter,
         "ranking_hints": ranking_hints(intent, favorite_categories, personal_names),
         "explanations": explanations(intent, favorite_categories, personal_names, popular_names),
+        "scroll_pattern": scroll_pattern,
+        "metrics": metrics,
         "items": page_items,
         "personal_items": [i for i in page_items if i.get("label") == "personal"],
         "search_items": [i for i in page_items if i.get("label") == "search"],

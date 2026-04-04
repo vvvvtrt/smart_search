@@ -17,6 +17,15 @@
     <script>
       const params = new URLSearchParams(location.search);
       const id = params.get("id");
+      const storeVisited = () => {
+        if (!id) return;
+        try {
+          const raw = localStorage.getItem("view_ids") || "[]";
+          const arr = new Set(JSON.parse(raw));
+          arr.add(id);
+          localStorage.setItem("view_ids", JSON.stringify(Array.from(arr)));
+        } catch {}
+      };
       const load = async () => {
         const res = await fetch(`/item/${encodeURIComponent(id)}`);
         const data = await res.json();
@@ -27,7 +36,20 @@
         document.getElementById("title").textContent = data.name;
         document.getElementById("meta").textContent = `${data.category} • ID ${data.id}`;
         document.getElementById("attrs").textContent = JSON.stringify(data.attributes || {}, null, 2);
+        storeVisited();
       };
+      let start = Date.now();
+      window.addEventListener("beforeunload", () => {
+        const seconds = (Date.now() - start) / 1000;
+        if (seconds >= 5 && id) {
+          try {
+            const raw = localStorage.getItem("dwell_ids") || "[]";
+            const arr = new Set(JSON.parse(raw));
+            arr.add(id);
+            localStorage.setItem("dwell_ids", JSON.stringify(Array.from(arr)));
+          } catch {}
+        }
+      });
       load();
     </script>
   </body>

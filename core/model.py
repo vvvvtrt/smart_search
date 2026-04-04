@@ -2,6 +2,7 @@ import os
 from typing import List, Dict, Any
 
 MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(os.path.dirname(__file__), "..", "data", "model.cbm"))
+THREADS = int(os.environ.get("CATBOOST_THREADS", os.cpu_count() or 4))
 
 _model = None
 _catboost_ok = True
@@ -17,6 +18,10 @@ def load_model():
         from catboost import CatBoostClassifier
         model = CatBoostClassifier()
         model.load_model(MODEL_PATH)
+        try:
+            model.set_params(thread_count=THREADS)
+        except Exception:
+            pass
         _model = model
         return _model
     except Exception:

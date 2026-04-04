@@ -136,6 +136,22 @@ def lemmatize_text(text: str) -> str:
     return " ".join(lemmas)
 
 
+def category_cluster(text: str) -> List[str]:
+    """Derive a coarse cluster token list from text/category.
+
+    Args:
+        text: Category or query text.
+
+    Returns:
+        List of cluster tokens (up to 3).
+    """
+    lem = lemmatize_text(text)
+    toks = tokens(lem)
+    if not toks:
+        return []
+    return toks[:3]
+
+
 def swap_layout(text: str) -> str:
     """Swap keyboard layout between EN and RU.
 

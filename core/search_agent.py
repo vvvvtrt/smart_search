@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from core.embedding import encode_query
-from core.normalization import normalize_query, build_query_variants
+from core.normalization import normalize_query, build_query_variants, category_cluster
 from core.personalization import build_behavior_context, cf_candidates
 from core.retrieval import (
     DB_PATH,
@@ -189,6 +189,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     category_filter = infer_filters(user_query, known_categories)
     category = category_filter.get("category")
+    query_cluster = category_cluster(category or user_query)
 
     expanded = expand_queries(user_query, intent, popular_names, personal_names, category)
     preferred_categories = [category] if category else ([] if user_query else favorite_categories)
@@ -269,6 +270,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             boost_categories,
             cf_scores,
             config.behavior,
+            query_cluster,
         )
 
     scored = score_candidates(candidates, bm25_scores, vector_scores, behavior_scores, config)
@@ -283,6 +285,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
             boost_tokens,
             boost_categories,
             cf_scores,
+            query_cluster,
         )
         if reasons:
             it["label"] = "personal"

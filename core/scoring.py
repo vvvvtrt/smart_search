@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from core.normalization import normalize_query, tokens as norm_tokens
+from core.normalization import normalize_query, tokens as norm_tokens, category_cluster
 
 logger = logging.getLogger("search.scoring")
 
@@ -21,9 +21,9 @@ class BehaviorWeights:
 
 @dataclass
 class ScoringWeights:
-    alpha: float = 0.40
-    beta: float = 0.35
-    gamma: float = 0.25
+    alpha: float = 0.15
+    beta: float = 0.75
+    gamma: float = 0.10
 
 
 @dataclass
@@ -31,6 +31,7 @@ class SearchConfig:
     scoring: ScoringWeights = field(default_factory=ScoringWeights)
     behavior: BehaviorWeights = field(default_factory=BehaviorWeights)
     personal_threshold: float = 0.55
+    cluster_softness: float = 0.35
     debug: bool = False
 
 
@@ -63,6 +64,7 @@ def behavior_score(
     boost_categories: Set[str],
     cf_scores: Dict[str, float],
     weights: BehaviorWeights,
+    query_cluster: List[str],
 ) -> float:
     """Compute raw behavior score for a single item.
 
@@ -93,14 +95,20 @@ def behavior_score(
         raw += weights.dislike
     if item_id in personal_id_set:
         raw += weights.purchase_history
+    item_cluster = category_cluster(item.get("category", ""))
+    if not query_cluster or not item_cluster:
+        cluster_weight = 1.0
+    else:
+        overlap = len(set(query_cluster) & set(item_cluster))
+        cluster_weight = 1.0 if overlap >= 1 else 0.35
     if boost_categories and item.get("category") in boost_categories:
-        raw += weights.category_match
+        raw += weights.category_match * cluster_weight
     if boost_tokens:
         name_tokens = set(norm_tokens(item.get("name", "")))
         if name_tokens & boost_tokens:
-            raw += weights.token_overlap
+            raw += weights.token_overlap * cluster_weight
     if item_id in cf_scores:
-        raw += weights.cf_boost * cf_scores[item_id]
+        raw += weights.cf_boost * cf_scores[item_id] * cluster_weight
     return raw
 
 
@@ -204,6 +212,7 @@ def personal_reasons(
     boost_tokens: Set[str],
     boost_categories: Set[str],
     cf_scores: Dict[str, float],
+    query_cluster: List[str],
 ) -> List[str]:
     """Return list of human-readable reasons for personalization.
 
@@ -230,12 +239,17 @@ def personal_reasons(
         reasons.append("посещение")
     if item_id in personal_id_set:
         reasons.append("история/профиль компании")
-    if boost_categories and item.get("category") in boost_categories:
+    item_cluster = category_cluster(item.get("category", ""))
+    if not query_cluster or not item_cluster:
+        cluster_ok = True
+    else:
+        cluster_ok = len(set(query_cluster) & set(item_cluster)) >= 1
+    if cluster_ok and boost_categories and item.get("category") in boost_categories:
         reasons.append("категория интереса")
-    if boost_tokens:
+    if cluster_ok and boost_tokens:
         name_tokens = set(norm_tokens(item.get("name", "")))
         if name_tokens & boost_tokens:
             reasons.append("похоже на понравившееся")
-    if item_id in cf_scores:
+    if cluster_ok and item_id in cf_scores:
         reasons.append("похожие закупки компаний")
     return reasons

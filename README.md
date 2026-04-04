@@ -37,7 +37,8 @@ PYTHONPATH=. uvicorn api.main:app --host 0.0.0.0 --port 8000
 docker compose up --build
 ```
 
-При первом запуске база `search.db` создаётся из CSV внутри образа.
+При первом запуске база `search.db` создаётся из CSV внутри контейнера, если файл ещё не существует.
+Чтобы ускорить пересборки, можно заранее положить `data/search.db` — он будет подхвачен через volume `./data:/app/data`.
 
 ## CatBoost персонализация
 

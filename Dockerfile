@@ -12,7 +12,6 @@ COPY api /app/api
 COPY core /app/core
 COPY web /app/web
 COPY data /app/data
-RUN python /app/core/build_db.py
 
 ENV PYTHONPATH=/app
 

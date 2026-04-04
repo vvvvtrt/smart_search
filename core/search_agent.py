@@ -298,6 +298,20 @@ def search_catalog_sql(conn, query, limit=50, offset=0):
     return results
 
 
+def search_catalog_multi(conn, queries, limit=50):
+    results = []
+    seen = set()
+    for q in queries:
+        for item in search_catalog_sql(conn, q, limit=limit, offset=0):
+            if item["id"] in seen:
+                continue
+            seen.add(item["id"])
+            results.append(item)
+            if len(results) >= limit:
+                return results
+    return results
+
+
 def fetch_item_sql(conn, item_id):
     row = conn.execute(
         "SELECT id, name, category, attributes FROM ste WHERE id = ? LIMIT 1",
@@ -339,6 +353,114 @@ def build_ste_index(ste_path, needed_ids):
 
 def normalize_query(q):
     return " ".join(q.strip().lower().split())
+
+
+_BRAND_VARIANTS = {
+    "asus": ["asus", "асус"],
+    "acer": ["acer", "асер"],
+    "lenovo": ["lenovo", "леново"],
+    "hp": ["hp", "хп"],
+    "huawei": ["huawei", "хуавей"],
+    "samsung": ["samsung", "самсунг"],
+    "xiaomi": ["xiaomi", "ксиаоми", "сяоми"],
+    "apple": ["apple", "эппл"],
+    "iphone": ["iphone", "айфон"],
+    "macbook": ["macbook", "макбук"],
+    "dell": ["dell", "делл"],
+    "msi": ["msi", "мси"],
+    "sony": ["sony", "сони"],
+    "lg": ["lg", "лж", "элджи"],
+    "yandex": ["yandex", "яндекс"],
+}
+
+
+_EN_RU_LAYOUT = str.maketrans(
+    "qwertyuiop[]asdfghjkl;'zxcvbnm,./",
+    "йцукенгшщзхъфывапролджэячсмитьбю.",
+)
+_RU_EN_LAYOUT = str.maketrans(
+    "йцукенгшщзхъфывапролджэячсмитьбю.",
+    "qwertyuiop[]asdfghjkl;'zxcvbnm,./",
+)
+
+
+def swap_layout(text):
+    if not text:
+        return text
+    latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    cyr = sum(1 for ch in text if ("а" <= ch.lower() <= "я") or ch.lower() == "ё")
+    if latin >= cyr:
+        return text.translate(_EN_RU_LAYOUT)
+    return text.translate(_RU_EN_LAYOUT)
+
+
+_LAT_CYR = {
+    "a": "а", "b": "б", "v": "в", "g": "г", "d": "д", "e": "е",
+    "z": "з", "i": "и", "k": "к", "l": "л", "m": "м", "n": "н",
+    "o": "о", "p": "п", "r": "р", "s": "с", "t": "т", "u": "у",
+    "f": "ф", "h": "х", "y": "й",
+}
+
+
+def translit_lat_to_cyr(text):
+    if not text:
+        return text
+    out = []
+    for ch in text:
+        low = ch.lower()
+        if low in _LAT_CYR:
+            mapped = _LAT_CYR[low]
+            out.append(mapped.upper() if ch.isupper() else mapped)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def expand_brand_variants(tokens):
+    if not tokens:
+        return [tokens]
+    variants = []
+    for t in tokens:
+        base = normalize_query(t)
+        found = None
+        for vals in _BRAND_VARIANTS.values():
+            if base in vals:
+                found = vals
+                break
+        variants.append(found or [t])
+    results = [""]
+    for opts in variants:
+        next_res = []
+        for r in results:
+            for o in opts:
+                next_res.append((r + " " + o).strip())
+        results = next_res[:10]
+    return results
+
+
+def build_query_variants(query):
+    q = normalize_query(query)
+    if not q:
+        return []
+    variants = [q]
+    layout_swapped = normalize_query(swap_layout(q))
+    if layout_swapped and layout_swapped not in variants:
+        variants.append(layout_swapped)
+    translit = normalize_query(translit_lat_to_cyr(q))
+    if translit and translit not in variants:
+        variants.append(translit)
+    tokens = q.split()
+    for v in expand_brand_variants(tokens):
+        v = normalize_query(v)
+        if v and v not in variants:
+            variants.append(v)
+    for base in [layout_swapped, translit]:
+        if base:
+            for v in expand_brand_variants(base.split()):
+                v = normalize_query(v)
+                if v and v not in variants:
+                    variants.append(v)
+    return variants[:10]
 
 
 def detect_intent(query, known_categories):
@@ -661,7 +783,11 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
         preferred_categories,
     )
 
-    candidates = search_catalog_sql(conn, user_query, limit=200, offset=0)
+    query_variants = build_query_variants(user_query)
+    if query_variants:
+        candidates = search_catalog_multi(conn, query_variants, limit=200)
+    else:
+        candidates = search_catalog_sql(conn, user_query, limit=200, offset=0)
     personal_id_set = set([str(x) for x in company_personal_ids] + [str(x) for x in purchase_history if isinstance(x, (str, int))])
     labeled_personal = []
     labeled_search = []
@@ -721,12 +847,14 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
     boost_tokens = set()
     boost_categories = set()
     if boost_ids:
+        candidate_map = {it["id"]: it for it in candidates}
         for bid in boost_ids:
-            for it in candidates:
-                if it["id"] == bid:
-                    boost_categories.add(it.get("category", ""))
-                    boost_tokens |= set(normalize_query(it.get("name", "")).split())
-                    break
+            it = candidate_map.get(bid)
+            if not it:
+                it = fetch_item_sql(conn, bid)
+            if it:
+                boost_categories.add(it.get("category", ""))
+                boost_tokens |= set(normalize_query(it.get("name", "")).split())
 
     def is_personal_hit(it):
         if it["id"] in personal_id_set:
@@ -764,15 +892,15 @@ def run_agent(payload, ste_path=STE_DEFAULT_PATH, contracts_path=CONTRACTS_DEFAU
         disliked = set(session_feedback.get("disliked_ids", []))
         for it in reranked:
             if it["id"] in liked:
-                it["score"] += 0.2
+                it["score"] += 0.35
             if it["id"] in disliked:
                 it["score"] -= 0.2
             if boost_categories and it.get("category") in boost_categories:
-                it["score"] += 0.1
+                it["score"] += 0.2
             if boost_tokens:
                 name_tokens = set(normalize_query(it.get("name", "")).split())
                 if name_tokens & boost_tokens:
-                    it["score"] += 0.05
+                    it["score"] += 0.12
         reranked.sort(key=lambda x: x.get("score", 0), reverse=True)
         if scroll_pattern == "personalized":
             primary = [it for it in reranked if is_personal_hit(it)]

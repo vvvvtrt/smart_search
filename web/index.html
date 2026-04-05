@@ -109,6 +109,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .pcard-stock-dot{width:6px;height:6px;background:#27AE60;border-radius:50%;flex-shrink:0}
 .pcard-btn{width:100%;background:#3659D8;color:#fff;border:none;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;transition:opacity .15s}
 .pcard-btn:hover{opacity:.85}
+.cart-btn.active{background:#1F3FAE}
 
 /* SEARCH RESULTS */
 .search-section{background:#F2F3F7;padding:8px 40px 10px}
@@ -130,16 +131,33 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .scard-meta{font-size:11px;color:#6E6E86;display:flex;align-items:center;gap:6px}
 .scard-badge{background:#EEF2FF;color:#2B4ECC;border-radius:10px;padding:2px 6px;font-size:10px;font-weight:700}
 .scard-actions{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
-.scard-like{border:1px solid #EAEAF0;background:#fff;border-radius:8px;padding:6px 8px;font-size:12px;cursor:pointer}
-.scard-like.active{border-color:#2B4ECC;color:#2B4ECC}
 .scard-link{border:1px solid #EAEAF0;background:#F6F7FB;border-radius:8px;padding:6px 8px;font-size:11px;text-decoration:none;color:#2B4ECC;font-weight:700}
 .scard-link:hover{border-color:#2B4ECC}
 
+/* SUPPLIER MODE */
+.supplier-panel{background:#F2F3F7;padding:10px 40px 26px;display:none}
+.supplier-wrap{background:#fff;border:1px solid #EAEAF0;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.supplier-title{font-size:16px;font-weight:800;color:#1A1A2E}
+.supplier-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.supplier-input{border:1px solid #D5D8E8;border-radius:16px;padding:8px 12px;font-size:13px;min-width:260px;background:#fff;font-family:inherit}
+.supplier-btn{background:#3659D8;color:#fff;border:none;border-radius:14px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.supplier-btn:hover{opacity:.9}
+.supplier-selected{font-size:12px;color:#555}
+.supplier-results,.supplier-companies{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sitem,.scompany{background:#fff;border:1px solid #EAEAF0;border-radius:12px;padding:10px}
+.sitem:hover,.scompany:hover{border-color:#2B4ECC}
+.sitem-name,.scompany-name{font-size:12px;font-weight:700;color:#1A1A2E;margin-bottom:4px}
+.sitem-cat{font-size:11px;color:#777}
+.scompany-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.stag{font-size:10px;border:1px solid #D5D8E8;border-radius:10px;padding:3px 6px;background:#fff;color:#2B4ECC}
+.scompany-action{margin-top:8px}
+.scompany-action button{width:100%}
+
 @media (max-width: 1100px){
-  .pers-grid,.pop-grid,.search-grid{grid-template-columns:repeat(2,1fr)}
+  .pers-grid,.pop-grid,.search-grid,.supplier-results,.supplier-companies{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width: 700px){
-  .pers-grid,.pop-grid,.search-grid{grid-template-columns:1fr}
+  .pers-grid,.pop-grid,.search-grid,.supplier-results,.supplier-companies{grid-template-columns:1fr}
   .hdr{padding:0 16px}
   .hero,.sector-wrap,.pop-section,.search-section{padding-left:16px;padding-right:16px}
 }
@@ -244,6 +262,26 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
     <div class="rec-cats" id="recCats"></div>
     <div class="rec-grid" id="recGrid"></div>
   </div>
+
+<!-- SUPPLIER MODE -->
+<div class="supplier-panel" id="supplierPanel">
+  <div class="supplier-wrap">
+    <div class="supplier-title">Режим поставщика</div>
+    <div class="supplier-row">
+      <input id="supplierItemInput" class="supplier-input" placeholder="Ваш товар: начните ввод" />
+      <button class="supplier-btn" id="supplierFindBtn">Найти товар</button>
+      <div class="supplier-selected" id="supplierSelected">Выбранный товар: —</div>
+    </div>
+    <div>
+      <div class="supplier-title" style="font-size:14px">Подходящие товары</div>
+      <div class="supplier-results" id="supplierResults"></div>
+    </div>
+    <div>
+      <div class="supplier-title" style="font-size:14px">Компании, которым можно предложить</div>
+      <div class="supplier-companies" id="supplierCompanies"></div>
+    </div>
+  </div>
+</div>
 
 </div>
 
@@ -350,9 +388,17 @@ const companyInnInput=document.getElementById('companyInnInput');
 const companyNameInput=document.getElementById('companyNameInput');
 const companyInnList=document.getElementById('companyInnList');
 const companyNameList=document.getElementById('companyNameList');
+const supplierPanel=document.getElementById('supplierPanel');
+const supplierItemInput=document.getElementById('supplierItemInput');
+const supplierFindBtn=document.getElementById('supplierFindBtn');
+const supplierResults=document.getElementById('supplierResults');
+const supplierCompanies=document.getElementById('supplierCompanies');
+const supplierSelected=document.getElementById('supplierSelected');
+let supplierSelectedCategory='';
 let likedIds=new Set();
 let longDwellIds=new Set();
 let visitedIds=new Set();
+let cartIds=new Set();
 let companyKind='customer';
 let searchPage=1;
 let lastQuery='';
@@ -363,16 +409,24 @@ function companyKey(){
   return `${companyKind}:${inn}`;
 }
 
+function setActiveCompanyKey(){
+  try{
+    localStorage.setItem('active_company_key', companyKey());
+  }catch(e){}
+}
+
 function loadCompanyState(){
   const key=companyKey();
   try{
     likedIds=new Set(JSON.parse(localStorage.getItem(`liked:${key}`)||'[]'));
     visitedIds=new Set(JSON.parse(localStorage.getItem(`view_ids:${key}`)||'[]'));
     longDwellIds=new Set(JSON.parse(localStorage.getItem(`dwell_ids:${key}`)||'[]'));
+    cartIds=new Set(JSON.parse(localStorage.getItem(`cart:${key}`)||'[]'));
   }catch(e){
     likedIds=new Set();
     visitedIds=new Set();
     longDwellIds=new Set();
+    cartIds=new Set();
   }
 }
 
@@ -382,6 +436,7 @@ function saveCompanyState(){
     localStorage.setItem(`liked:${key}`,JSON.stringify(Array.from(likedIds)));
     localStorage.setItem(`view_ids:${key}`,JSON.stringify(Array.from(visitedIds)));
     localStorage.setItem(`dwell_ids:${key}`,JSON.stringify(Array.from(longDwellIds)));
+    localStorage.setItem(`cart:${key}`,JSON.stringify(Array.from(cartIds)));
   }catch(e){}
 }
 
@@ -390,6 +445,8 @@ function setCompanyKind(kind){
   document.getElementById('companyCustomer').classList.toggle('active',kind==='customer');
   document.getElementById('companySupplier').classList.toggle('active',kind==='supplier');
   loadCompanies();
+  updateModeUI();
+  setActiveCompanyKey();
 }
 
 document.querySelectorAll('.tag').forEach(tag=>{
@@ -429,6 +486,7 @@ async function loadCompanies(){
     });
     syncCompanyInputsFromSelect();
     loadCompanyState();
+    setActiveCompanyKey();
   }catch(e){
     companySelect.innerHTML='<option value="">Нет данных</option>';
   }
@@ -467,17 +525,31 @@ function syncSelectFromInputs(){
     loadCompanyState();
     if(lastQuery){runSearch();}
     loadRecommendations();
+    setActiveCompanyKey();
+  }
+}
+
+function updateModeUI(){
+  const supplierMode = companyKind === 'supplier';
+  const searchSection = document.querySelector('.search-section');
+  if(searchSection){searchSection.style.display = supplierMode ? 'none' : 'block';}
+  if(recSection){recSection.style.display = supplierMode ? 'none' : '';}
+  if(supplierPanel){supplierPanel.style.display = supplierMode ? 'block' : 'none';}
+  if(supplierMode){
+    loadSupplierCompanies();
+  }else{
+    loadRecommendations();
   }
 }
 
 function makeSearchCard(it){
   const badge=it.label==='personal'?'персональная':'поиск';
-  const liked=likedIds.has(it.id);
   const reason=(it.personal_reason||[]).join(' • ');
   const classes=['scard'];
   if(it.label==='personal') classes.push('personal');
   if(visitedIds.has(it.id)) classes.push('viewed');
   const icon=emojiForItem(it.name||'', it.category||'');
+  const inCart=cartIds.has(it.id);
   return `
     <div class="${classes.join(' ')}">
       <div class="scard-top">${icon}</div>
@@ -490,11 +562,8 @@ function makeSearchCard(it){
         </div>
         ${reason ? `<div class="scard-sub">Почему: ${reason}</div>` : ''}
         <div class="scard-actions">
-          <button class="scard-like ${liked?'active':''}" data-like="${it.id}">
-            ${liked?'👍 Лайк':'👍 Лайк'}
-          </button>
           <a class="scard-link" href="/item.html?id=${encodeURIComponent(it.id)}" data-view="${it.id}">Профиль</a>
-          <button class="pcard-btn" style="padding:6px 10px;font-size:11px">${cartIcon()} В корзину</button>
+          <button class="pcard-btn cart-btn ${inCart?'active':''}" data-cart="${it.id}" style="padding:6px 10px;font-size:11px">${cartIcon()} ${inCart?'В корзине':'В корзину'}</button>
         </div>
       </div>
     </div>
@@ -520,15 +589,6 @@ function makeRecCard(it){
 
 
 function bindLikeButtons(){
-  searchGrid.querySelectorAll('[data-like]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const id=btn.getAttribute('data-like');
-      if(likedIds.has(id)) likedIds.delete(id);
-      else likedIds.add(id);
-      saveCompanyState();
-      runSearch();
-    });
-  });
   searchGrid.querySelectorAll('[data-view]').forEach(link=>{
     link.addEventListener('click',()=>{
       const id=link.getAttribute('data-view');
@@ -538,9 +598,24 @@ function bindLikeButtons(){
       }
     });
   });
+  searchGrid.querySelectorAll('[data-cart]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const id=btn.getAttribute('data-cart');
+      if(!id){return;}
+      if(cartIds.has(id)) cartIds.delete(id);
+      else cartIds.add(id);
+      if(cartIds.has(id)) likedIds.add(id);
+      else likedIds.delete(id);
+      saveCompanyState();
+      btn.classList.toggle('active', cartIds.has(id));
+      btn.innerHTML=`${cartIcon()} ${cartIds.has(id)?'В корзине':'В корзину'}`;
+      runSearch();
+    });
+  });
 }
 
 async function runSearch(){
+  if(companyKind === 'supplier'){return;}
   const q=inp.value.trim();
   if(!q){searchStatus.textContent='Введите запрос';return;}
   lastQuery=q;
@@ -561,7 +636,7 @@ async function runSearch(){
     page:searchPage,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(likedIds),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)
@@ -609,6 +684,7 @@ async function runSearch(){
 }
 
 async function loadRecommendations(){
+  if(companyKind === 'supplier'){return;}
   const payload={
     user_query:'',
     user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
@@ -617,7 +693,7 @@ async function loadRecommendations(){
     page:1,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(likedIds),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)
@@ -653,6 +729,7 @@ async function loadRecommendations(){
 
 
 async function loadMore(){
+  if(companyKind === 'supplier'){return;}
   if(!lastQuery){return;}
   searchStatus.textContent='Загружаем...';
   searchPage+=1;
@@ -664,7 +741,7 @@ async function loadMore(){
     page:searchPage,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(likedIds),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)
@@ -694,14 +771,133 @@ document.getElementById('companySupplier').addEventListener('click',()=>setCompa
 companySelect.addEventListener('change',()=>{
   syncCompanyInputsFromSelect();
   loadCompanyState();
+  setActiveCompanyKey();
   if(lastQuery){runSearch();}
   loadRecommendations();
 });
-companyInnInput.addEventListener('change',syncSelectFromInputs);
-companyNameInput.addEventListener('change',syncSelectFromInputs);
+companyInnInput.addEventListener('change',()=>{syncSelectFromInputs(); setActiveCompanyKey();});
+companyNameInput.addEventListener('change',()=>{syncSelectFromInputs(); setActiveCompanyKey();});
 loadMoreBtn.addEventListener('click',loadMore);
 loadCompanies();
 loadRecommendations();
+updateModeUI();
+
+async function supplierSearchItems(){
+  const q=supplierItemInput.value.trim();
+  if(!q){
+    supplierResults.innerHTML='<div class="sitem">Введите товар для поиска</div>';
+    return;
+  }
+  supplierResults.innerHTML='<div class="sitem">Поиск...</div>';
+  const payload={
+    user_query:q,
+    user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
+    company:{type:'supplier',name:companyNameInput.value.trim()||''},
+    company_inn:companyInnInput.value.trim()||'',
+    page:1,
+    limit:6,
+    session_feedback:{liked_ids:[],disliked_ids:[],long_dwell_ids:[],visited_ids:[]}
+  };
+  try{
+    const res=await fetch('/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    const items=data.items||[];
+    if(!items.length){
+      supplierResults.innerHTML='<div class="sitem">Ничего не найдено</div>';
+      return;
+    }
+    supplierResults.innerHTML=items.map(it=>`
+      <div class="sitem" data-item="${it.id}" data-category="${it.category || ''}">
+        <div class="sitem-name">${it.name || it.id}</div>
+        <div class="sitem-cat">${it.category || ''}</div>
+      </div>
+    `).join('');
+    supplierResults.querySelectorAll('[data-item]').forEach(card=>{
+      card.addEventListener('click',()=>{
+        const id=card.getAttribute('data-item');
+        const name=card.querySelector('.sitem-name')?.textContent || id;
+        const category=card.getAttribute('data-category') || '';
+        supplierSelected.textContent=`Выбранный товар: ${name}`;
+        supplierSelectedCategory=category;
+        loadSupplierCompanies();
+      });
+    });
+  }catch(e){
+    supplierResults.innerHTML='<div class="sitem">Ошибка поиска</div>';
+  }
+}
+
+async function loadSupplierCompanies(){
+  supplierCompanies.innerHTML='<div class="scompany">Загрузка компаний...</div>';
+  try{
+    const res=await fetch('/companies?kind=customer');
+    const data=await res.json();
+    const companies=(data.companies||[]).slice(0,36);
+    const cards = await Promise.all(companies.map(async (c)=>{
+      let sectors=[];
+      try{
+        const r=await fetch(`/company/sector?name=${encodeURIComponent(c.name||'')}`);
+        const d=await r.json();
+        sectors=d.sectors||[];
+      }catch(e){}
+      if(supplierSelectedCategory){
+        const cat=(supplierSelectedCategory||'').toLowerCase();
+        const catTokens=cat.split(/[^a-zа-я0-9]+/i).filter(t=>t.length>=4);
+        const matched=(sectors||[]).some(s=>{
+          if(!s){return false;}
+          const sec=s.toLowerCase();
+          if(sec.includes(cat) || cat.includes(sec)){return true;}
+          return catTokens.some(t=>sec.includes(t));
+        });
+        if(!matched){
+          return '';
+        }
+      }
+      const tags=(sectors||[]).slice(0,3).map(s=>`<span class="stag">${s}</span>`).join('');
+      return `
+        <div class="scompany">
+          <div class="scompany-name">${c.name || '—'}</div>
+          <div class="sitem-cat">ИНН: ${c.inn || '—'}</div>
+          <div class="scompany-tags">${tags || ''}</div>
+          <div class="scompany-action"><button class="supplier-btn">Предложить</button></div>
+        </div>
+      `;
+    }));
+    const html=cards.filter(Boolean).join('');
+    if(html){
+      supplierCompanies.innerHTML=html;
+      return;
+    }
+    if(supplierSelectedCategory){
+      supplierCompanies.innerHTML='<div class="scompany">Нет компаний с совпадающей сферой, показываем все</div>';
+      const fallback = await Promise.all(companies.map(async (c)=>{
+        let sectors=[];
+        try{
+          const r=await fetch(`/company/sector?name=${encodeURIComponent(c.name||'')}`);
+          const d=await r.json();
+          sectors=d.sectors||[];
+        }catch(e){}
+        const tags=(sectors||[]).slice(0,3).map(s=>`<span class="stag">${s}</span>`).join('');
+        return `
+          <div class="scompany">
+            <div class="scompany-name">${c.name || '—'}</div>
+            <div class="sitem-cat">ИНН: ${c.inn || '—'}</div>
+            <div class="scompany-tags">${tags || ''}</div>
+            <div class="scompany-action"><button class="supplier-btn">Предложить</button></div>
+          </div>
+        `;
+      }));
+      supplierCompanies.insertAdjacentHTML('beforeend', fallback.join(''));
+      return;
+    }
+    supplierCompanies.innerHTML='<div class="scompany">Нет компаний</div>';
+  }catch(e){
+    supplierCompanies.innerHTML='<div class="scompany">Ошибка загрузки</div>';
+  }
+}
+
+supplierFindBtn.addEventListener('click',supplierSearchItems);
+supplierItemInput.addEventListener('keydown',e=>{if(e.key==='Enter')supplierSearchItems();});
 </script>
 </body>
 </html>

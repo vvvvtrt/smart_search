@@ -12,19 +12,56 @@
   <body>
     <h1 id="title">Профиль товара</h1>
     <div id="meta"></div>
+    <div style="font-size:12px;color:#666;margin:6px 0 14px">Если вы на странице более 5 секунд — товар считается понравившимся</div>
     <h3>Атрибуты</h3>
     <pre id="attrs">{}</pre>
     <script>
       const params = new URLSearchParams(location.search);
       const id = params.get("id");
+      const getCompanyKey = () => {
+        try{
+          const key = localStorage.getItem("active_company_key");
+          return key || "default";
+        }catch(e){
+          return "default";
+        }
+      };
+      const storeForKey = (suffix, value) => {
+        try{
+          localStorage.setItem(`${suffix}:${getCompanyKey()}`, JSON.stringify(Array.from(value)));
+        }catch{}
+      };
+      const loadForKey = (suffix) => {
+        try{
+          const raw = localStorage.getItem(`${suffix}:${getCompanyKey()}`) || "[]";
+          return new Set(JSON.parse(raw));
+        }catch{
+          return new Set();
+        }
+      };
       const storeVisited = () => {
         if (!id) return;
         try {
-          const raw = localStorage.getItem("view_ids") || "[]";
-          const arr = new Set(JSON.parse(raw));
+          const arr = loadForKey("view_ids");
           arr.add(id);
-          localStorage.setItem("view_ids", JSON.stringify(Array.from(arr)));
+          storeForKey("view_ids", arr);
         } catch {}
+      };
+      const storeLiked = () => {
+        if (!id) return;
+        try{
+          const liked = loadForKey("liked");
+          liked.add(id);
+          storeForKey("liked", liked);
+        }catch{}
+      };
+      const storeDwell = () => {
+        if (!id) return;
+        try{
+          const dwell = loadForKey("dwell_ids");
+          dwell.add(id);
+          storeForKey("dwell_ids", dwell);
+        }catch{}
       };
       const load = async () => {
         const res = await fetch(`/item/${encodeURIComponent(id)}`);
@@ -38,18 +75,15 @@
         document.getElementById("attrs").textContent = JSON.stringify(data.attributes || {}, null, 2);
         storeVisited();
       };
-      let start = Date.now();
-      window.addEventListener("beforeunload", () => {
-        const seconds = (Date.now() - start) / 1000;
-        if (seconds >= 5 && id) {
-          try {
-            const raw = localStorage.getItem("dwell_ids") || "[]";
-            const arr = new Set(JSON.parse(raw));
-            arr.add(id);
-            localStorage.setItem("dwell_ids", JSON.stringify(Array.from(arr)));
-          } catch {}
-        }
-      });
+      let likedTimer = null;
+      const startLikeTimer = () => {
+        if (likedTimer || !id) return;
+        likedTimer = setTimeout(() => {
+          storeLiked();
+          storeDwell();
+        }, 5000);
+      };
+      startLikeTimer();
       load();
     </script>
   </body>

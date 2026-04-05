@@ -10,9 +10,9 @@
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2E}
 
 /* HEADER */
-.hdr{background:#fff;padding:0 40px;height:62px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #E8E8EE}
+.hdr{background:#fff;padding:0 48px;height:68px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #E8E8EE}
 .logo{display:flex;align-items:center;gap:9px;cursor:pointer}
-.logo-box{width:36px;height:36px;background:#C0392B;border-radius:5px;display:flex;align-items:center;justify-content:center}
+.logo-box{width:38px;height:38px;background:#C0392B;border-radius:6px;display:flex;align-items:center;justify-content:center}
 .logo-box svg{width:20px;height:20px}
 .logo-text .l1{font-size:13px;font-weight:900;color:#C0392B;letter-spacing:.07em;line-height:1.1}
 .logo-text .l2{font-size:9.5px;color:#888;letter-spacing:.1em;font-weight:500}
@@ -21,28 +21,29 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .hdr-login:hover{color:#1A3AAA}
 
 /* HERO */
-.hero{position:relative;background:#fff;overflow:hidden;padding:48px 40px 40px;text-align:center}
+.hero{position:relative;background:#fff;overflow:hidden;padding:56px 48px 48px;text-align:center}
 .hero-blob-r{position:absolute;top:-60px;right:-80px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(43,78,204,.18) 0%,transparent 70%);pointer-events:none}
 .hero-blob-l{position:absolute;top:-40px;left:-100px;width:320px;height:320px;border-radius:50%;background:radial-gradient(circle,rgba(192,57,43,.15) 0%,transparent 70%);pointer-events:none}
-.hero h1{font-size:28px;font-weight:800;color:#1A1A2E;margin-bottom:6px;position:relative;z-index:1}
-.hero-sub{font-size:14px;color:#888;margin-bottom:22px;position:relative;z-index:1}
+.hero h1{font-size:32px;font-weight:800;color:#1A1A2E;margin-bottom:6px;position:relative;z-index:1}
+.hero-sub{font-size:15px;color:#888;margin-bottom:10px;position:relative;z-index:1}
+.hero-suggestions{font-size:12px;color:#6E6E86;margin-bottom:22px;position:relative;z-index:1}
 
 /* TAGS */
-.tags{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:22px;position:relative;z-index:1}
-.tag{font-size:13px;color:#444;background:#fff;border:1px solid #DDD;border-radius:22px;padding:5px 14px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;transition:border-color .15s,box-shadow .15s}
+.tags{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:18px;position:relative;z-index:1}
+.tag{font-size:14px;color:#444;background:#fff;border:1px solid #DDD;border-radius:22px;padding:6px 16px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:border-color .15s,box-shadow .15s}
 .tag:hover{border-color:#2B4ECC;color:#2B4ECC}
 .tag.hot{border-color:#DDD;font-weight:600;color:#2B4ECC}
 .tag-trend{width:18px;height:18px;background:linear-gradient(135deg,#2B4ECC,#5B7EFF);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .tag-trend svg{width:10px;height:10px;stroke:#fff;fill:none}
 
 /* SEARCH */
-.search-wrap{max-width:680px;margin:0 auto;position:relative;z-index:1}
+.search-wrap{max-width:720px;margin:0 auto;position:relative;z-index:1}
 .search-bar{display:flex;align-items:center;background:#fff;border:1.5px solid #D5D8E8;border-radius:50px;padding:6px 6px 6px 22px;box-shadow:0 2px 20px rgba(43,78,204,.08);transition:border-color .2s,box-shadow .2s}
 .search-bar:focus-within{border-color:#2B4ECC;box-shadow:0 2px 24px rgba(43,78,204,.15)}
 .search-bar svg{flex-shrink:0;margin-right:10px;color:#AAA}
-.search-bar input{flex:1;border:none;outline:none;font-size:15px;color:#1A1A2E;background:transparent;font-family:inherit;min-width:0}
+.search-bar input{flex:1;border:none;outline:none;font-size:16px;color:#1A1A2E;background:transparent;font-family:inherit;min-width:0}
 .search-bar input::placeholder{color:#BBB}
-.search-submit{background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border:none;border-radius:44px;padding:11px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:opacity .15s}
+.search-submit{background:linear-gradient(135deg,#2B4ECC,#4A6FE8);color:#fff;border:none;border-radius:44px;padding:12px 36px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:opacity .15s}
 .search-submit:hover{opacity:.88}
 .company-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px}
 .company-label{font-size:13px;color:#666}
@@ -52,7 +53,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .company-toggle button.active{background:#2B4ECC;color:#fff}
 .company-select{border:1px solid #D5D8E8;border-radius:18px;padding:6px 12px;font-size:12px;min-width:260px;background:#fff;font-family:inherit}
 .search-status{margin-top:10px;font-size:12px;color:#777}
-.variant-row{margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.hint-row{margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.hint-title{font-size:12px;color:#777}
+.variant-row{margin-top:12px}
 .variant-title{font-size:12px;color:#777}
 .variant-btn{border:1px solid #D5D8E8;background:#fff;border-radius:16px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
 .variant-btn:hover{border-color:#2B4ECC;color:#2B4ECC}
@@ -155,7 +158,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
         <rect x="14" y="14" width="7" height="7" rx="1"/>
       </svg>
     </div>
-    <div class="logo-text">
+  <div class="logo-text">
       <div class="l1">ПОРТАЛ</div>
       <div class="l2">ПОСТАВЩИКОВ</div>
     </div>
@@ -170,19 +173,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 <div class="hero">
   <div class="hero-blob-r"></div>
   <div class="hero-blob-l"></div>
+  <div class="tags">
+    <div class="tag hot" data-value="флешки">
+      <div class="tag-trend"><svg viewBox="0 0 24 24" stroke-width="3"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+      флешки
+    </div>
+    <div class="tag" data-value="Чистящее средство">Чистящее средство</div>
+    <div class="tag" data-value="Дезинфекция">Дезинфекция</div>
+    <div class="tag" data-value="проведение ЕГЭ">проведение ЕГЭ</div>
+    <div class="tag" data-value="Кетамин">Кетамин</div>
+  </div>
+
   <h1>Умный поиск для бизнеса</h1>
   <p class="hero-sub">Найдите нужные товары, сравните предложения и закупайте выгодно</p>
-
-  <div class="tags">
-    <div class="tag hot">
-      <div class="tag-trend"><svg viewBox="0 0 24 24" stroke-width="3"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
-      Тема: флешки
-    </div>
-    <div class="tag">Тема: Чистящее средство</div>
-    <div class="tag">Тема: Дезинфекция</div>
-    <div class="tag">Тема: проведение ЕГЭ</div>
-    <div class="tag">Тема: Кетамин</div>
-  </div>
+  <div class="hero-suggestions">Предложения: флешки • дезинфекция • чистящее средство • проведение ЕГЭ</div>
 
   <div class="search-wrap">
     <div class="search-bar">
@@ -200,8 +204,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
       <div class="company-sector" id="companySector">Сфера: —</div>
     </div>
     <div class="search-status" id="searchStatus"></div>
-    <div class="variant-row" id="variantRow" style="display:none">
-      <div class="variant-title">Похожие запросы:</div>
+    <div class="hint-row" id="correctedRow" style="display:none">
+      <div class="hint-title">Возможно, вы имели в виду:</div>
+      <div id="correctedButtons"></div>
+    </div>
+    <div class="hint-row variant-row" id="variantRow" style="display:none">
+      <div class="variant-title">Возможно, вы имели в виду:</div>
       <div id="variantButtons"></div>
     </div>
   </div>
@@ -228,15 +236,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
     <div class="rec-cats" id="recCats"></div>
     <div class="rec-grid" id="recGrid"></div>
   </div>
-
-<!-- POPULAR -->
-<div class="pop-section">
-  <div class="sec-row">
-    <div class="sec-title">Рекомендуем для вашей компании</div>
-    <div class="sec-all">На основе контрактов и действий</div>
-  </div>
-  <div class="pop-grid" id="popGrid"></div>
-</div>
 
 </div>
 
@@ -304,7 +303,8 @@ function makePop(item){
   </div>`;
 }
 
-document.getElementById('popGrid').innerHTML='';
+const popGridInit=document.getElementById('popGrid');
+if(popGridInit){popGridInit.innerHTML='';}
 
 // Search placeholder anim
 const phs=['Маски медицинские, от 100 шт.','Флешка USB 3.0, оптом','Чистящее средство для офиса','Дезинфекция помещений','Кетамин, сертификат качества'];
@@ -330,6 +330,8 @@ const searchStatus=document.getElementById('searchStatus');
 const searchInfo=document.getElementById('searchInfo');
 const variantRow=document.getElementById('variantRow');
 const variantButtons=document.getElementById('variantButtons');
+const correctedRow=document.getElementById('correctedRow');
+const correctedButtons=document.getElementById('correctedButtons');
 const loadMoreBtn=document.getElementById('loadMoreBtn');
 const recSection=document.getElementById('recSection');
 const recGrid=document.getElementById('recGrid');
@@ -377,6 +379,15 @@ function setCompanyKind(kind){
   document.getElementById('companySupplier').classList.toggle('active',kind==='supplier');
   loadCompanies();
 }
+
+document.querySelectorAll('.tag').forEach(tag=>{
+  tag.addEventListener('click',()=>{
+    const val=(tag.getAttribute('data-value')||tag.textContent||'').trim();
+    if(!val){return;}
+    inp.value=val;
+    inp.focus();
+  });
+});
 
 async function loadCompanies(){
   try{
@@ -473,6 +484,8 @@ async function runSearch(){
   searchStatus.textContent='Поиск...';
   variantRow.style.display='none';
   variantButtons.innerHTML='';
+  correctedRow.style.display='none';
+  correctedButtons.innerHTML='';
   const payload={
     user_query:q,
     user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
@@ -500,6 +513,18 @@ async function runSearch(){
     const uniq=[];
     const seen=new Set();
     variants.forEach(v=>{if(v && !seen.has(v)){seen.add(v);uniq.push(v);}});
+    if(data.corrected_query && data.corrected_query !== q){
+      const raw=data.corrected_query.toString();
+      const cleaned=raw.replace(/^Возможно, вы имели в виду:\s*/i,'').trim() || raw;
+      correctedButtons.innerHTML=`<button class="variant-btn" data-q="${cleaned}">${cleaned}</button>`;
+      correctedRow.style.display='flex';
+      correctedButtons.querySelectorAll('[data-q]').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          inp.value=btn.getAttribute('data-q');
+          runSearch();
+        });
+      });
+    }
     if(uniq.length){
       variantButtons.innerHTML=uniq.slice(0,8).map(v=>`<button class="variant-btn" data-q="${v}">${v}</button>`).join('');
       variantRow.style.display='flex';

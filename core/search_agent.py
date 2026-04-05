@@ -9,7 +9,13 @@ import logging
 
 from core.normalization import normalize_query, build_query_variants, category_cluster, tokens as norm_tokens
 from core.ngram import ngram_scores
-from core.personalization import build_behavior_context, cf_candidates
+from core.personalization import (
+    build_behavior_context,
+    cf_candidates,
+    ensure_industry_profiles,
+    get_industry_keywords,
+    INDUSTRY_PROFILES,
+)
 from core.retrieval import (
     DB_PATH,
     ensure_db_ready,
@@ -19,9 +25,9 @@ from core.retrieval import (
     load_contract_names_sql,
     build_ste_index_sql,
     top_categories_sql,
-    search_fts_multi,
     search_like,
-    expand_query_from_session,
+    extract_session_tokens,
+    weighted_search,
     fetch_item_sql,
     get_company_sectors,
     set_company_sectors,
@@ -76,6 +82,10 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     company = payload.get("company") or {}
     company_name = company.get("name") if isinstance(company, dict) else company
     company_type = company.get("type", "customer") if isinstance(company, dict) else "customer"
+    company_inn = None
+    if isinstance(company, dict):
+        company_inn = company.get("inn") or company.get("customer_inn") or company.get("supplier_inn")
+    company_inn = company_inn or payload.get("company_inn")
     mode = payload.get("mode")
     limit = int(payload.get("limit", 5))
     page = int(payload.get("page", 1))
@@ -100,6 +110,7 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     except sqlite3.Error:
         pass
     t_db_conn = time.perf_counter()
+    ensure_industry_profiles(conn)
 
     cache = load_cache(CACHE_PATH)
     db_mtime = file_mtime(DB_PATH)
@@ -251,7 +262,8 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
         preferred_categories,
     )
 
-    enriched_query = expand_query_from_session(user_query, session_feedback, conn)
+    session_tokens = extract_session_tokens(user_query, session_feedback, conn)
+    industry_keywords = get_industry_keywords(str(company_inn), INDUSTRY_PROFILES) if company_inn else []
 
     # Retrieval: FTS + n-gram similarity
     candidates_fts: List[Dict[str, Any]] = []
@@ -260,21 +272,27 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     candidates_map: Dict[str, Dict[str, Any]] = {}
 
     if not rec_mode:
-        candidates_fts = search_fts_multi(conn, enriched_query, limit=200)
+        candidates_fts, bm25_scores = weighted_search(
+            user_query,
+            session_tokens,
+            industry_keywords,
+            conn,
+            limit=200,
+        )
         if not candidates_fts:
-            variants = build_query_variants(enriched_query)
-            variants += rewrite_query_variants(enriched_query, recent_actions, favorite_categories)
+            variants = build_query_variants(user_query)
+            variants += rewrite_query_variants(user_query, recent_actions, favorite_categories)
             variants = list(dict.fromkeys(variants))[:5]
             if not variants:
-                variants = [enriched_query]
+                variants = [user_query]
             candidates_fts = search_like(conn, variants, limit=200)
-        bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
+            bm25_scores = {it["id"]: it.get("bm25", 0.0) for it in candidates_fts}
 
         for it in candidates_fts:
             it.pop("bm25", None)
             candidates_map[it["id"]] = it
         if candidates_map:
-            vector_scores = ngram_scores(enriched_query, candidates_map.values())
+            vector_scores = ngram_scores(user_query, candidates_map.values())
 
     # CF candidates
     company_history_ids = set([str(x) for x in company_personal_ids]) | set(
@@ -296,7 +314,8 @@ def run_agent(payload: Dict[str, Any]) -> Dict[str, Any]:
     q_tokens = [t for t in normalize_query(user_query).split() if t]
     short_query = len(q_tokens) <= 2
     if short_query:
-        candidates = category_rerank(candidates, session_feedback, conn)
+        industry_profile = INDUSTRY_PROFILES.get(str(company_inn), {}) if company_inn else {}
+        candidates = category_rerank(candidates, session_feedback, conn, industry_profile)
 
     # Behavior context
     liked_ids = set(session_feedback.get("liked_ids", []))

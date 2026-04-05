@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 import time
-from typing import Dict, List, Tuple, Iterable, Optional
+from typing import Dict, List, Tuple, Iterable, Optional, Any
 
 import numpy as np
 
@@ -316,6 +316,58 @@ def search_fts_multi(conn: sqlite3.Connection, query: str, limit: int = 200) -> 
             if len(results) >= limit:
                 return results
     return results
+
+
+def extract_session_tokens(
+    query: str,
+    session_feedback: Dict,
+    db_conn: sqlite3.Connection,
+    max_tokens: int = 3,
+) -> List[str]:
+    """Extract top session tokens for query context."""
+    if not session_feedback:
+        return []
+    q_tokens = norm_tokens(lemmatize_text(query))
+    short_query = len(q_tokens) <= 1
+    visited = set(session_feedback.get("visited_ids", []) or [])
+    liked = set(session_feedback.get("liked_ids", []) or [])
+    dwell = set(session_feedback.get("long_dwell_ids", []) or [])
+    session_ids = [str(x) for x in (visited | liked | dwell) if str(x)]
+    if not session_ids:
+        return []
+    names: List[str] = []
+    for batch in _chunked(session_ids, size=900):
+        placeholders = ",".join(["?"] * len(batch))
+        rows = db_conn.execute(
+            f"SELECT name FROM ste WHERE id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        for (name,) in rows:
+            if name:
+                names.append(name)
+    if not names:
+        return []
+    token_counts: Dict[str, int] = {}
+    for name in names:
+        lemmas = lemmatize_text(name)
+        for tok in norm_tokens(lemmas):
+            if tok in STOPWORDS:
+                continue
+            if not tok.isalpha():
+                continue
+            if any(ch.isdigit() for ch in tok):
+                continue
+            token_counts[tok] = token_counts.get(tok, 0) + 1
+    if not token_counts:
+        return []
+    query_lemmas = set(q_tokens)
+    if not short_query and not (set(token_counts.keys()) & query_lemmas):
+        return []
+    top_tokens = [
+        t for t, _ in sorted(token_counts.items(), key=lambda x: (-x[1], x[0]))
+        if t not in query_lemmas
+    ][:max_tokens]
+    return top_tokens
 
 
 def load_faiss():
@@ -693,3 +745,78 @@ def expand_query_from_session(query: str, session_feedback: Dict, db_conn: sqlit
         )
     _ = time.perf_counter() - t0
     return expanded
+
+
+def merge_weighted(score_sets: Iterable[Tuple[Dict[str, float], float]]) -> Dict[str, float]:
+    """Merge weighted score maps and normalize to [0,1]."""
+    combined: Dict[str, float] = {}
+    for scores, weight in score_sets:
+        if not scores or weight <= 0:
+            continue
+        for ste_id, score in scores.items():
+            combined[ste_id] = combined.get(ste_id, 0.0) + score * weight
+    if not combined:
+        return {}
+    vmin = min(combined.values())
+    vmax = max(combined.values())
+    if vmax == vmin:
+        return {k: 0.0 for k in combined}
+    return {k: (v - vmin) / (vmax - vmin) for k, v in combined.items()}
+
+
+def weighted_search(
+    query: str,
+    session_tokens: List[str],
+    industry_keywords: List[str],
+    db_conn: sqlite3.Connection,
+    limit: int = 200,
+) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
+    """Run weighted FTS tracks and return candidates with merged scores."""
+    if not query:
+        return [], {}
+    session_tokens = session_tokens or []
+    industry_keywords = industry_keywords or []
+
+    has_session = bool(session_tokens)
+    has_industry = bool(industry_keywords)
+
+    if not has_session:
+        weights = (1.0, 0.0, 0.0)
+    elif has_industry:
+        weights = (0.60, 0.25, 0.15)
+    else:
+        weights = (0.70, 0.30, 0.0)
+
+    candidates_map: Dict[str, Dict[str, Any]] = {}
+
+    def _run_fts(q: str) -> List[Dict[str, Any]]:
+        results = search_fts_multi(db_conn, q, limit=limit)
+        for item in results:
+            candidates_map.setdefault(item["id"], item)
+        return results
+
+    results_q = _run_fts(query)
+    scores_q = {it["id"]: float(it.get("bm25", 0.0)) for it in results_q}
+
+    scores_ctx: Dict[str, float] = {}
+    scores_ind: Dict[str, float] = {}
+
+    if weights[1] > 0 and session_tokens:
+        ctx_query = f"{query} {' '.join(session_tokens[:2])}".strip()
+        results_ctx = _run_fts(ctx_query)
+        scores_ctx = {it["id"]: float(it.get("bm25", 0.0)) for it in results_ctx}
+
+    if weights[2] > 0 and industry_keywords:
+        top_kw = industry_keywords[0]
+        ind_query = f"{query} {top_kw}".strip()
+        results_ind = _run_fts(ind_query)
+        scores_ind = {it["id"]: float(it.get("bm25", 0.0)) for it in results_ind}
+
+    merged_scores = merge_weighted(
+        [
+            (scores_q, weights[0]),
+            (scores_ctx, weights[1]),
+            (scores_ind, weights[2]),
+        ]
+    )
+    return list(candidates_map.values()), merged_scores

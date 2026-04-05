@@ -10,6 +10,7 @@ import os
 import logging
 import sqlite3
 from core.search_agent import run_agent
+from core.personalization import ensure_industry_profiles
 from core.retrieval import fetch_item_sql, DB_PATH, ensure_db_ready, get_company_sectors, set_company_sectors
 from core.build_db import build_db
 
@@ -85,6 +86,7 @@ def ensure_db():
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("SELECT 1 FROM ste_fts LIMIT 1")
+        ensure_industry_profiles(conn)
         conn.close()
     except Exception:
         build_db()

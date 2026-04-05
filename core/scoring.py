@@ -21,32 +21,39 @@ def _chunked(values: Iterable[str], size: int = 900) -> Iterable[List[str]]:
         yield buf
 
 
-def category_rerank(candidates: List[Dict], session_feedback: Dict, db_conn) -> List[Dict]:
+def category_rerank(
+    candidates: List[Dict],
+    session_feedback: Dict,
+    db_conn,
+    industry_profile: Optional[Dict[str, float]] = None,
+) -> List[Dict]:
     """Apply category-based boost to candidates."""
-    if not candidates or not session_feedback:
+    if not candidates:
         return candidates
+    industry_profile = industry_profile or {}
     visited = set(session_feedback.get("visited_ids", []) or [])
     liked = set(session_feedback.get("liked_ids", []) or [])
     dwell = set(session_feedback.get("long_dwell_ids", []) or [])
     disliked = set(session_feedback.get("disliked_ids", []) or [])
     session_ids = [str(x) for x in (visited | liked | dwell) if str(x)]
-    if not session_ids:
+    if not session_ids and not industry_profile:
         return candidates
     cat_counts: Dict[str, int] = {}
     disliked_cats: Set[str] = set()
-    for batch in _chunked(session_ids):
-        placeholders = ",".join(["?"] * len(batch))
-        rows = db_conn.execute(
-            f"SELECT id, category FROM ste WHERE id IN ({placeholders})",
-            batch,
-        ).fetchall()
-        for ste_id, category in rows:
-            if not category:
-                continue
-            cat_counts[category] = cat_counts.get(category, 0) + 1
-            if str(ste_id) in disliked:
-                disliked_cats.add(category)
-    if not cat_counts and not disliked_cats:
+    if session_ids:
+        for batch in _chunked(session_ids):
+            placeholders = ",".join(["?"] * len(batch))
+            rows = db_conn.execute(
+                f"SELECT id, category FROM ste WHERE id IN ({placeholders})",
+                batch,
+            ).fetchall()
+            for ste_id, category in rows:
+                if not category:
+                    continue
+                cat_counts[category] = cat_counts.get(category, 0) + 1
+                if str(ste_id) in disliked:
+                    disliked_cats.add(category)
+    if not cat_counts and not disliked_cats and not industry_profile:
         return candidates
     for it in candidates:
         cat = it.get("category") or ""
@@ -55,9 +62,15 @@ def category_rerank(candidates: List[Dict], session_feedback: Dict, db_conn) -> 
             boost = 0.7
         elif cat in cat_counts:
             boost = 1.0 + 0.3 * math.log1p(cat_counts[cat])
+        industry_boost = 1.0
+        if cat in industry_profile:
+            industry_boost = 1.0 + 0.2 * float(industry_profile.get(cat, 0.0))
+        boost *= industry_boost
         if boost > 2.0:
             boost = 2.0
         it["category_boost"] = boost
+        if industry_profile:
+            it["industry_boost"] = industry_boost
     return candidates
 
 
@@ -272,6 +285,8 @@ def score_candidates(
             }
             if category_boosts is not None:
                 it["score_breakdown"]["category_boost"] = round(category_boosts.get(item_id, 1.0), 4)
+            if "industry_boost" in item:
+                it["score_breakdown"]["industry_boost"] = round(float(item.get("industry_boost", 1.0)), 4)
             logger.debug(
                 "score_breakdown",
                 extra={
@@ -281,6 +296,7 @@ def score_candidates(
                     "beh": be,
                     "final": final,
                     "category_boost": category_boosts.get(item_id, 1.0) if category_boosts is not None else 1.0,
+                    "industry_boost": item.get("industry_boost", 1.0),
                 },
             )
         scored.append(it)

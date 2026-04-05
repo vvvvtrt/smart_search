@@ -76,18 +76,18 @@ def category_rerank(
 
 @dataclass
 class BehaviorWeights:
-    like: float = 1.0
-    long_dwell: float = 0.6
-    visited: float = 0.3
-    category_match: float = 0.4
+    like: float = 1.4
+    long_dwell: float = 1.3
+    visited: float = 1.0
+    category_match: float = 0.65
     token_overlap: float = 0.25
     dislike: float = -0.5
-    purchase_history: float = 0.35
-    cf_boost: float = 0.4
+    purchase_history: float = 0.6
+    cf_boost: float = 0.6
     sector_pref: float = 0.5
     brand_match: float = 0.45
-    recent_action: float = 0.45
-    focus_category: float = 0.6
+    recent_action: float = 0.8
+    focus_category: float = 0.75
 
 
 @dataclass

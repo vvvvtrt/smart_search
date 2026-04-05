@@ -636,7 +636,7 @@ async function runSearch(){
     page:searchPage,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds, ...longDwellIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)
@@ -693,7 +693,7 @@ async function loadRecommendations(){
     page:1,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds, ...longDwellIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)
@@ -741,7 +741,7 @@ async function loadMore(){
     page:searchPage,
     limit:8,
     session_feedback:{
-      liked_ids:Array.from(new Set([...likedIds, ...cartIds])),
+      liked_ids:Array.from(new Set([...likedIds, ...cartIds, ...longDwellIds])),
       disliked_ids:[],
       long_dwell_ids:Array.from(longDwellIds),
       visited_ids:Array.from(visitedIds)

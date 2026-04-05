@@ -802,7 +802,7 @@ def weighted_search(
     scores_ind: Dict[str, float] = {}
 
     if weights[1] > 0 and session_tokens:
-        ctx_query = f"{query} {' '.join(session_tokens[:2])}".strip()
+        ctx_query = f"{query} {' '.join(session_tokens[:4])}".strip()
         results_ctx = _run_fts(ctx_query)
         scores_ctx = {it["id"]: float(it.get("bm25", 0.0)) for it in results_ctx}
 

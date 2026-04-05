@@ -30,6 +30,7 @@ class SearchPayload(BaseModel):
     user_query: str
     user_profile: UserProfile = Field(default_factory=UserProfile)
     company: Optional[Company] = None
+    company_inn: Optional[str] = None
     search_context: Optional[Dict[str, Any]] = None
     page: int = 1
     limit: int = 5
@@ -120,11 +121,23 @@ def set_company_sector(payload: CompanySectorPayload):
 
 @app.get("/companies")
 def companies(kind: str = "customer"):
-    payload = {"user_query": "", "user_profile": {}, "mode": "companies_only"}
-    result = run_agent(payload)
+    ensure_db_ready()
+    conn = sqlite3.connect(DB_PATH)
     if kind == "supplier":
-        return {"companies": result.get("supplier_companies", [])}
-    return {"companies": result.get("customer_companies", [])}
+        rows = conn.execute(
+            "SELECT supplier_inn, supplier_name, COUNT(1) as cnt "
+            "FROM contracts WHERE supplier_inn != '' AND supplier_name != '' "
+            "GROUP BY supplier_inn, supplier_name ORDER BY cnt DESC LIMIT 500"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT customer_inn, customer_name, COUNT(1) as cnt "
+            "FROM contracts WHERE customer_inn != '' AND customer_name != '' "
+            "GROUP BY customer_inn, customer_name ORDER BY cnt DESC LIMIT 500"
+        ).fetchall()
+    conn.close()
+    companies = [{"inn": str(inn), "name": name} for inn, name, _ in rows if inn and name]
+    return {"companies": companies}
 
 
 @app.get("/item/{item_id}")

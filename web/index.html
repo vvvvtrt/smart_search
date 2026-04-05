@@ -51,6 +51,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
 .company-toggle{display:flex;border:1px solid #D5D8E8;border-radius:18px;overflow:hidden}
 .company-toggle button{border:none;background:#fff;padding:6px 12px;font-size:12px;font-weight:700;color:#2B4ECC;cursor:pointer}
 .company-toggle button.active{background:#2B4ECC;color:#fff}
+.company-inputs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.company-input{border:1px solid #D5D8E8;border-radius:18px;padding:6px 12px;font-size:12px;min-width:180px;background:#fff;font-family:inherit}
 .company-select{border:1px solid #D5D8E8;border-radius:18px;padding:6px 12px;font-size:12px;min-width:260px;background:#fff;font-family:inherit}
 .search-status{margin-top:10px;font-size:12px;color:#777}
 .hint-row{margin-top:12px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
@@ -200,6 +202,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:#F2F3F7;color:#1A1A2
         <button id="companyCustomer" class="active">Заказчик</button>
         <button id="companySupplier">Поставщик</button>
       </div>
+      <div class="company-inputs">
+        <input id="companyInnInput" class="company-input" placeholder="ИНН компании" list="companyInnList" />
+        <datalist id="companyInnList"></datalist>
+        <input id="companyNameInput" class="company-input" placeholder="Название компании" list="companyNameList" />
+        <datalist id="companyNameList"></datalist>
+      </div>
       <select id="companySelect" class="company-select"></select>
       <div class="company-sector" id="companySector">Сфера: —</div>
     </div>
@@ -338,6 +346,10 @@ const recGrid=document.getElementById('recGrid');
 const recCats=document.getElementById('recCats');
 const recInfo=document.getElementById('recInfo');
 const companySector=document.getElementById('companySector');
+const companyInnInput=document.getElementById('companyInnInput');
+const companyNameInput=document.getElementById('companyNameInput');
+const companyInnList=document.getElementById('companyInnList');
+const companyNameList=document.getElementById('companyNameList');
 let likedIds=new Set();
 let longDwellIds=new Set();
 let visitedIds=new Set();
@@ -347,8 +359,8 @@ let lastQuery='';
 
 
 function companyKey(){
-  const name=companySelect.value||'default';
-  return `${companyKind}:${name}`;
+  const inn=companySelect.value||'default';
+  return `${companyKind}:${inn}`;
 }
 
 function loadCompanyState(){
@@ -394,15 +406,67 @@ async function loadCompanies(){
     const res=await fetch(`/companies?kind=${companyKind}`);
     const data=await res.json();
     companySelect.innerHTML='';
-    (data.companies||[]).forEach(name=>{
+    companyInnList.innerHTML='';
+    companyNameList.innerHTML='';
+    (data.companies||[]).forEach(item=>{
       const opt=document.createElement('option');
-      opt.value=name;
-      opt.textContent=name;
+      const inn=item.inn || '';
+      const name=item.name || '';
+      opt.value=inn;
+      opt.textContent=inn && name ? `${inn} — ${name}` : (name || inn || '—');
+      opt.dataset.name=name;
       companySelect.appendChild(opt);
+      if(inn){
+        const o=document.createElement('option');
+        o.value=inn;
+        companyInnList.appendChild(o);
+      }
+      if(name){
+        const o=document.createElement('option');
+        o.value=name;
+        companyNameList.appendChild(o);
+      }
     });
+    syncCompanyInputsFromSelect();
     loadCompanyState();
   }catch(e){
     companySelect.innerHTML='<option value="">Нет данных</option>';
+  }
+}
+
+function syncCompanyInputsFromSelect(){
+  const opt=companySelect.options[companySelect.selectedIndex];
+  if(!opt){return;}
+  const inn=opt.value||'';
+  const name=opt.dataset?.name||'';
+  if(inn){companyInnInput.value=inn;}
+  if(name){companyNameInput.value=name;}
+}
+
+function syncSelectFromInputs(){
+  const inn=companyInnInput.value.trim();
+  const name=companyNameInput.value.trim();
+  let matched=false;
+  if(inn){
+    const opt=[...companySelect.options].find(o=>o.value===inn);
+    if(opt){
+      companySelect.value=inn;
+      if(opt.dataset?.name){companyNameInput.value=opt.dataset.name;}
+      matched=true;
+    }
+  }
+  if(!matched && name){
+    const opt=[...companySelect.options].find(o=>(o.dataset?.name||'')===name);
+    if(opt){
+      companySelect.value=opt.value;
+      if(opt.value){companyInnInput.value=opt.value;}
+      matched=true;
+    }
+  }
+  if(matched){
+    loadCompanyState();
+    if(lastQuery){runSearch();}
+    loadRecommendations();
   }
 }
 
@@ -486,10 +550,14 @@ async function runSearch(){
   variantButtons.innerHTML='';
   correctedRow.style.display='none';
   correctedButtons.innerHTML='';
+  const selectedOption=companySelect.options[companySelect.selectedIndex];
+  const companyName=companyNameInput.value.trim() || selectedOption?.dataset?.name || '';
+  const companyInn=companyInnInput.value.trim() || companySelect.value || '';
   const payload={
     user_query:q,
     user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
-    company:{type:companyKind,name:companySelect.value||''},
+    company:{type:companyKind,name:companyName},
+    company_inn:companyInn,
     page:searchPage,
     limit:8,
     session_feedback:{
@@ -544,7 +612,8 @@ async function loadRecommendations(){
   const payload={
     user_query:'',
     user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
-    company:{type:companyKind,name:companySelect.value||''},
+    company:{type:companyKind,name:(companyNameInput.value.trim()||companySelect.options[companySelect.selectedIndex]?.dataset?.name||'')},
+    company_inn:(companyInnInput.value.trim()||companySelect.value||''),
     page:1,
     limit:8,
     session_feedback:{
@@ -590,7 +659,8 @@ async function loadMore(){
   const payload={
     user_query:lastQuery,
     user_profile:{favorite_categories:[],purchase_history:[],recent_actions:[]},
-    company:{type:companyKind,name:companySelect.value||''},
+    company:{type:companyKind,name:(companyNameInput.value.trim()||companySelect.options[companySelect.selectedIndex]?.dataset?.name||'')},
+    company_inn:(companyInnInput.value.trim()||companySelect.value||''),
     page:searchPage,
     limit:8,
     session_feedback:{
@@ -622,10 +692,13 @@ inp.addEventListener('keydown',e=>{if(e.key==='Enter')runSearch();});
 document.getElementById('companyCustomer').addEventListener('click',()=>setCompanyKind('customer'));
 document.getElementById('companySupplier').addEventListener('click',()=>setCompanyKind('supplier'));
 companySelect.addEventListener('change',()=>{
+  syncCompanyInputsFromSelect();
   loadCompanyState();
   if(lastQuery){runSearch();}
   loadRecommendations();
 });
+companyInnInput.addEventListener('change',syncSelectFromInputs);
+companyNameInput.addEventListener('change',syncSelectFromInputs);
 loadMoreBtn.addEventListener('click',loadMore);
 loadCompanies();
 loadRecommendations();
